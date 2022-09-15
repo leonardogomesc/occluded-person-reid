@@ -46,6 +46,10 @@ class MyModel(nn.Module):
         
         self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
 
+        self.global_fc = nn.Linear(2048, num_classes)
+        init.normal_(self.global_fc.weight, std=0.001)
+        init.constant_(self.global_fc.bias, 0)
+
 
     def forward(self, x):
         # shape [N, C, H, W]
@@ -56,7 +60,7 @@ class MyModel(nn.Module):
         stripe_h = int(feat.size(2) / self.num_stripes)
 
         local_feat_list = []
-        logits_list = []
+        local_logits_list = []
 
         rvd_logits_list = []
 
@@ -69,7 +73,7 @@ class MyModel(nn.Module):
             # shape [N, c]
             local_conv_feat = local_conv_feat.view(local_conv_feat.size(0), -1)
             local_feat_list.append(local_conv_feat)
-            logits_list.append(self.fc_list[i](local_conv_feat))
+            local_logits_list.append(self.fc_list[i](local_conv_feat))
 
             # rvd
             # shape [N, c, 1, 1]
@@ -82,8 +86,9 @@ class MyModel(nn.Module):
 
         global_feat = self.avgpool(feat)
         global_feat = global_feat.view(global_feat.size(0), -1)
+        global_logits = self.global_fc(global_feat)
 
-        return global_feat, local_feat_list, logits_list, rvd_logits_list
+        return global_feat, global_logits, local_feat_list, local_logits_list, rvd_logits_list
 
 
 def main():
@@ -100,13 +105,14 @@ def main():
     x = torch.randn(64, 3, 384, 128)
     x = x.to(device)
 
-    global_feat, local_feat_list, logits_list, rvd_logits_list = model(x)
+    global_feat, global_logits, local_feat_list, local_logits_list, rvd_logits_list = model(x)
 
     print(global_feat.size())
+    print(global_logits.size())
     print(len(local_feat_list))
     print(local_feat_list[0].size())
-    print(len(logits_list))
-    print(logits_list[0].size())
+    print(len(local_logits_list))
+    print(local_logits_list[0].size())
     print(len(rvd_logits_list))
     print(rvd_logits_list[0].size())
 
@@ -114,3 +120,4 @@ def main():
 
 if __name__ == '__main__':
     main()
+

@@ -3,12 +3,15 @@ import torch.nn as nn
 import torch.optim as optim
 import time
 from utils import train
-from data import CustomDataset
+from data import CustomDataset, BatchSampler
 from torch.utils.data import DataLoader
 from models import MyModel
+from triplet import batch_hard_mine_triplet, calculate_distance_matrix
+import numpy as np
+import sys
 
 
-def test(model, test_loader, test_loader_query):
+def test(model, test_loader, test_loader_query, device):
     test_features = []
     test_labels = []
 
@@ -104,36 +107,46 @@ def test(model, test_loader, test_loader_query):
         print('map: ' + str(map.item()))
 
 
-def main():
+def main(dataset_name):
 
     device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 
-    n_epochs = 10
-    num_classes = 51
+    n_epochs = 80
+    n_persons = 16
+    n_pictures = 4
 
-    model = MyModel(num_classes)
+    if dataset_name == 'market':
+        train_path = 'C:\\Users\\leona\\Documents\\Dataset\\Market-1501-v15.09.15\\bounding_box_train'
+        train_pose_path = 'C:\\Users\\leona\\Documents\\Dataset\\Market-1501-v15.09.15-pose\\bounding_box_train'
+        extensions = ['.jpg']
+        num_stripes = 6
+        lr = 0.02
+        alpha = 0.9
+
+    dataset = CustomDataset(train_path, train_pose_path, extensions, num_stripes, training=True)
+    batch_sampler = BatchSampler(dataset, n_persons, n_pictures)
+    train_loader = DataLoader(dataset, batch_sampler=batch_sampler, num_workers=4)
+
+    num_classes = dataset.get_num_classes()
+
+    model = MyModel(num_classes, num_stripes=num_stripes)
     model = model.to(device)
 
     ce = nn.CrossEntropyLoss()
+    tl = nn.TripletMarginLoss()
 
+    # optimizer = optim.SGD(model.parameters(), lr=lr)
     optimizer = optim.Adam(model.parameters(), lr=1e-4)
+    scheduler = optim.lr_scheduler.StepLR(optimizer, 20, gamma=0.5)
 
-    save_path = 'model.pth'
-    
-    batch_size = 64
-
-    # Create Dataloader to read the data within batch sizes and put into memory. 
-    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=4) 
-    valid_loader = DataLoader(valid_dataset, batch_size=batch_size, shuffle=False, num_workers=4)
-
+    save_path = 'checkpoint_adam.pt'
 
     print('Starting Training')
 
-    valid_loss_min = float('inf')
     train_loss_hist = []
-    valid_loss_hist = []
+    train_loss_min = np.inf
 
-    for epoch in range(1, n_epochs + 1):
+    for epoch in range(n_epochs):
         t_start = time.time()
 
         ######################
@@ -141,67 +154,53 @@ def main():
         ######################
 
         train_loss = 0.0
-
-        train_predicted = []
-        train_true = []
-
+        
         model.train()
 
-        for batch_idx, (data, target) in enumerate(train_loader):
+        for batch_idx, data in enumerate(train_loader):
+            img, person_labels, occlusion_labels = data
+
             # move to GPU
-            data = data.to(device)
-            target = target.to(device)
-          
-            output = model(data)
-            loss = loss_fn(output, target)
+            img = img.to(device)
+            person_labels = person_labels.to(device)
+            occlusion_labels = occlusion_labels.to(device)
+
+            global_feat, global_logits, local_feat_list, local_logits_list, rvd_logits_list = model(img)
+
+            gid_loss = ce(global_logits, person_labels)
+
+            distance_matrix = calculate_distance_matrix(occlusion_labels, local_feat_list, global_feat)
+            gtri_loss = batch_hard_mine_triplet(distance_matrix, person_labels)
+
+            pid_loss = 0
+            ptri_loss = 0
+            rvd_loss = 0
+
+            for stripe in range(num_stripes):
+                pid_loss += ce(local_logits_list[stripe], person_labels)
+                ptri_loss += batch_hard_mine_triplet(torch.cdist(local_feat_list[stripe], local_feat_list[stripe], p=2), person_labels)
+                rvd_loss += ce(rvd_logits_list[stripe], occlusion_labels[:, stripe])
+
+            pid_loss /= num_stripes
+            ptri_loss /= num_stripes
+            rvd_loss /= num_stripes
+
+            loss = ((1 - alpha) * gid_loss) + (alpha * pid_loss) + rvd_loss + ptri_loss + gtri_loss
 
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
-           
+            
             train_loss += loss.item()
-
-            train_predicted.extend(torch.argmax(output, 1).tolist())
-            train_true.extend(target.tolist())
 
             sys.stdout.write("\r" + '........ mini-batch {} loss: {:.3f}'.format(batch_idx + 1, loss.item()))
             sys.stdout.flush()
         
-        train_loss /= batch_idx + 1
-
-        train_acc = np.mean(calculate_accuracy(train_true, train_predicted, n_classes=n_classes)) * 100
-    
-        ########################    
-        # validating the model #
-        ########################
-
-        valid_loss = 0.0
-
-        valid_predicted = []
-        valid_true = []
-
-        model.eval()
-
-        with torch.no_grad():
-
-            for batch_idx, (data, target) in enumerate(valid_loader):
-                data = data.to(device)
-                target = target.to(device)
-                
-                output = model(data)
-                loss = loss_fn(output, target)
-
-                valid_loss += loss.item()
-
-                valid_predicted.extend(torch.argmax(output, 1).tolist())
-                valid_true.extend(target.tolist())
+        # scheduler.step()
         
-        valid_loss /= batch_idx + 1
-
-        valid_acc = np.mean(calculate_accuracy(valid_true, valid_predicted, n_classes=n_classes)) * 100
-
+        train_loss /= batch_idx + 1
+    
         train_loss_hist.append(train_loss)
-        valid_loss_hist.append(valid_loss)
 
         t_end = time.time()
 
@@ -209,23 +208,20 @@ def main():
         print('\n')
         print(f'Epoch: {epoch}')
         print(f'\tTraining Loss: {train_loss}')
-        print(f'\tTraining Accuracy: {train_acc}')
-        print(f'\tValidation Loss: {valid_loss}')
-        print(f'\tValidation Accuracy: {valid_acc}')
         print(f'Total time: {t_end - t_start} s')
         
-        ## saving the model if validation loss has decreased
-        if valid_loss < valid_loss_min:
+        ## saving the model if loss has decreased
+        if train_loss < train_loss_min:
             print('Saving model')
-            torch.save(model.state_dict(), save_path)
-            valid_loss_min = valid_loss
+            torch.save({'epoch': epoch,
+                        'train_loss_hist': train_loss_hist,
+                        'model': model.state_dict(),
+                        'optimizer': optimizer.state_dict(),
+                        'scheduler': scheduler.state_dict()}, save_path)
+            train_loss_min = train_loss
         
         print('\n\n')
-            
-    # return trained model
-    return model, train_loss_hist, valid_loss_hist
-
 
 if __name__ == '__main__':
-    main()
+    main('market')
 

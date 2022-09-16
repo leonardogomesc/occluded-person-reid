@@ -205,8 +205,6 @@ class CustomDataset(Dataset):
 
         img = self.files[idx]
 
-        print(img)
-
         path = os.path.join(self.root, img)
         pose_path = os.path.join(self.pose_root, f'{os.path.splitext(img)[0]}.json')
 
@@ -220,6 +218,7 @@ class CustomDataset(Dataset):
         tensor_img, keypoints = transform((pil_img, keypoints))
 
         occlusion_labels = self.generate_occlusion_labels(keypoints, tensor_img.size(1))
+        occlusion_labels = torch.tensor(occlusion_labels)
 
         return tensor_img, self.labels[idx], occlusion_labels
 

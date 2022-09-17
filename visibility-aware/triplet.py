@@ -1,7 +1,8 @@
+from re import T
 import torch
 import numpy as np
 
-
+'''
 def calculate_distance_matrix(occlusion_labels, local_feat_list, global_feat):
     occlusion_labels = occlusion_labels.detach()
 
@@ -17,6 +18,30 @@ def calculate_distance_matrix(occlusion_labels, local_feat_list, global_feat):
         distance_matrix += stripe_occlusion_labels_matrix * stripe_distance_matrix
 
     distance_matrix += torch.cdist(global_feat, global_feat, p=2)
+    distance_matrix /= occlusion_labels_matrix + 1
+
+    return distance_matrix
+'''
+
+
+def calculate_distance_matrix(occlusion_labels, occlusion_labels_2, local_feat_list, local_feat_list_2, global_feat, global_feat_2):
+    occlusion_labels = occlusion_labels.detach()
+    occlusion_labels_2 = occlusion_labels_2.detach()
+
+    occlusion_labels_matrix = torch.zeros((occlusion_labels.size(0), occlusion_labels_2.size(0)), device=occlusion_labels.device)
+    distance_matrix = torch.zeros((global_feat.size(0), global_feat_2.size(0)), device=global_feat.device)
+
+    for stripe in range(len(local_feat_list)):
+        stripe_occlusion_labels = occlusion_labels[:, stripe]
+        stripe_occlusion_labels_2 = occlusion_labels_2[:, stripe]
+
+        stripe_occlusion_labels_matrix = stripe_occlusion_labels.unsqueeze(1) * stripe_occlusion_labels_2.unsqueeze(0)
+        stripe_distance_matrix = torch.cdist(local_feat_list[stripe], local_feat_list_2[stripe], p=2)
+
+        occlusion_labels_matrix += stripe_occlusion_labels_matrix
+        distance_matrix += stripe_occlusion_labels_matrix * stripe_distance_matrix
+
+    distance_matrix += torch.cdist(global_feat, global_feat_2, p=2)
     distance_matrix /= occlusion_labels_matrix + 1
 
     return distance_matrix

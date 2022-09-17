@@ -24,9 +24,10 @@ class Resize:
 
         img = transforms.functional.resize(img=img, size=self.new_size)
 
-        if len(keypoints) > 0:
-            ratio = torch.tensor([self.new_size[1]/size[1], self.new_size[0]/size[0]])
-            keypoints = keypoints * ratio
+        if keypoints is not None:
+            if len(keypoints) > 0:
+                ratio = torch.tensor([self.new_size[1]/size[1], self.new_size[0]/size[0]])
+                keypoints = keypoints * ratio
 
         return img, keypoints
 
@@ -49,8 +50,9 @@ class RandomHorizontalFlip:
         
         img = transforms.functional.hflip(img=img)
 
-        if len(keypoints) > 0:
-            keypoints[:, 0] = size[1] - keypoints[:, 0]
+        if keypoints is not None:
+            if len(keypoints) > 0:
+                keypoints[:, 0] = size[1] - keypoints[:, 0]
 
         return img, keypoints
 
@@ -76,9 +78,10 @@ class RandomCrop:
 
         img = transforms.functional.crop(img=img, top=self.top, left=self.left, height=self.new_size[0], width=self.new_size[1])
 
-        if len(keypoints) > 0:
-            translation = torch.tensor([self.left, self.top])
-            keypoints = keypoints - translation
+        if keypoints is not None:
+            if len(keypoints) > 0:
+                translation = torch.tensor([self.left, self.top])
+                keypoints = keypoints - translation
 
         return img, keypoints
 
@@ -176,9 +179,10 @@ class CustomDataset(Dataset):
         self.files.sort(key=lambda x: int(x.split('_')[0]))
 
         self.labels = []
+        self.original_labels = []
 
         curr_label = -1
-        prev_label = -1
+        prev_label = None
 
         for f in self.files:
             label = int(f.split('_')[0])
@@ -188,6 +192,7 @@ class CustomDataset(Dataset):
                 prev_label = label
 
             self.labels.append(curr_label)
+            self.original_labels.append(label)
 
         for idx in range(len(self.labels)):
             label = self.labels[idx]
@@ -204,23 +209,27 @@ class CustomDataset(Dataset):
         transform = get_transform(training=self.training)
 
         img = self.files[idx]
-
         path = os.path.join(self.root, img)
-        pose_path = os.path.join(self.pose_root, f'{os.path.splitext(img)[0]}.json')
-
         pil_img = Image.open(path)
 
-        with open(pose_path, 'r') as f:
-            keypoints = json.load(f)
-        
-        keypoints = self.transform_keypoints(keypoints)
+        keypoints = None
+
+        if self.pose_root is not None:
+            pose_path = os.path.join(self.pose_root, f'{os.path.splitext(img)[0]}.json')
+
+            with open(pose_path, 'r') as f:
+                keypoints = json.load(f)
+            
+            keypoints = self.transform_keypoints(keypoints)
 
         tensor_img, keypoints = transform((pil_img, keypoints))
 
-        occlusion_labels = self.generate_occlusion_labels(keypoints, tensor_img.size(1))
-        occlusion_labels = torch.tensor(occlusion_labels)
+        occlusion_labels = torch.tensor([])
 
-        return tensor_img, self.labels[idx], occlusion_labels
+        if keypoints is not None:
+            occlusion_labels = self.generate_occlusion_labels(keypoints, tensor_img.size(1))
+
+        return tensor_img, self.labels[idx], self.original_labels[idx], occlusion_labels
 
     def get_num_classes(self):
         return len(list(self.individuals.keys()))
@@ -250,7 +259,7 @@ class CustomDataset(Dataset):
             
             occlusion_labels[label] = 1
         
-        return occlusion_labels
+        return torch.tensor(occlusion_labels)
 
 
 class BatchSampler(Sampler):

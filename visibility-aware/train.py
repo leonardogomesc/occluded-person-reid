@@ -44,7 +44,6 @@ def main(dataset_name):
     model = model.to(device)
 
     ce = nn.CrossEntropyLoss()
-    tl = nn.TripletMarginLoss()
 
     # optimizer = optim.SGD(model.parameters(), lr=lr)
     optimizer = optim.Adam(model.parameters(), lr=1e-4)
@@ -165,8 +164,8 @@ def main_test(dataset_name, checkpoint_path):
     test_dataset = CustomDataset(test_path, test_pose_path, extensions, num_stripes, training=False)
     query_dataset = CustomDataset(query_path, query_pose_path, extensions, num_stripes, training=False)
 
-    test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False, num_workers=4)
-    test_loader_query = DataLoader(query_dataset, batch_size=batch_size, shuffle=False, num_workers=4)
+    test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=True, num_workers=4)
+    test_loader_query = DataLoader(query_dataset, batch_size=batch_size, shuffle=True, num_workers=4)
 
     model = MyModel(num_classes, num_stripes=num_stripes)
     model = model.to(device)

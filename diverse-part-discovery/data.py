@@ -13,48 +13,19 @@ class Resize:
     def __init__(self, new_size):
         self.new_size = new_size
 
-    def __call__(self, data):
-        img = data[0]
-        keypoints = data[1]
-
-        if isinstance(img, torch.Tensor):
-            size = img.size()[1:]
-        else:
-            size = (img.size[1], img.size[0])
-
-        img = transforms.functional.resize(img=img, size=self.new_size)
-
-        if keypoints is not None:
-            if len(keypoints) > 0:
-                ratio = torch.tensor([self.new_size[1]/size[1], self.new_size[0]/size[0]])
-                keypoints = keypoints * ratio
-
-        return img, keypoints
+    def __call__(self, img):
+        return transforms.functional.resize(img=img, size=self.new_size)
 
 
 class RandomHorizontalFlip:
     def __init__(self):
         self.flip = random.random() < 0.5
         
-    def __call__(self, data):
+    def __call__(self, img):
         if not self.flip:
-            return data
+            return img
 
-        img = data[0]
-        keypoints = data[1]
-
-        if isinstance(img, torch.Tensor):
-            size = img.size()[1:]
-        else:
-            size = (img.size[1], img.size[0])
-        
-        img = transforms.functional.hflip(img=img)
-
-        if keypoints is not None:
-            if len(keypoints) > 0:
-                keypoints[:, 0] = size[1] - keypoints[:, 0]
-
-        return img, keypoints
+        return transforms.functional.hflip(img=img)
 
 
 class RandomCrop:
@@ -62,9 +33,7 @@ class RandomCrop:
         self.set_variables = True
         self.new_size = new_size
     
-    def __call__(self, data):
-        img = data[0]
-        keypoints = data[1]
+    def __call__(self, img):
 
         if isinstance(img, torch.Tensor):
             size = img.size()[1:]
@@ -78,12 +47,7 @@ class RandomCrop:
 
         img = transforms.functional.crop(img=img, top=self.top, left=self.left, height=self.new_size[0], width=self.new_size[1])
 
-        if keypoints is not None:
-            if len(keypoints) > 0:
-                translation = torch.tensor([self.left, self.top])
-                keypoints = keypoints - translation
-
-        return img, keypoints
+        return img
 
 
 class RandomErasing:
@@ -94,12 +58,9 @@ class RandomErasing:
         self.ratio = ratio
         self.value = value
     
-    def __call__(self, data):
+    def __call__(self, img):
         if not self.apply_transform:
-            return data
-
-        img = data[0]
-        keypoints = data[1]
+            return img
         
         if self.set_variables:
             if isinstance(self.value, (int, float)):
@@ -117,17 +78,12 @@ class RandomErasing:
         
         img = transforms.functional.erase(img, self.x, self.y, self.h, self.w, self.v)
 
-        return img, keypoints
+        return img
 
 
 class ToTensor:
-    def __call__(self, data):
-        img = data[0]
-        keypoints = data[1]
-
-        img = transforms.functional.to_tensor(img)
-
-        return img, keypoints
+    def __call__(self, img):
+        return transforms.functional.to_tensor(img)
 
 
 class Normalize:
@@ -135,16 +91,11 @@ class Normalize:
         self.mean = mean
         self.std = std
 
-    def __call__(self, data):
-        img = data[0]
-        keypoints = data[1]
-
-        img = transforms.functional.normalize(img, self.mean, self.std)
-
-        return img, keypoints
+    def __call__(self, img):
+        return transforms.functional.normalize(img, self.mean, self.std)
 
 
-def get_transform(training=True, hw=(384, 128), inc=1.05):
+def get_transform(training=True, hw=(256, 128), inc=1.05):
 
     transform_list = []
 
@@ -166,11 +117,9 @@ def get_transform(training=True, hw=(384, 128), inc=1.05):
 
 class CustomDataset(Dataset):
 
-    def __init__(self, root, pose_root, extensions, num_stripes, training=True):
+    def __init__(self, root, extensions, training=True):
         self.root = root
-        self.pose_root = pose_root
         self.training = training
-        self.num_stripes = num_stripes
 
         self.individuals = {}
 
@@ -212,54 +161,12 @@ class CustomDataset(Dataset):
         path = os.path.join(self.root, img)
         pil_img = Image.open(path)
 
-        keypoints = None
+        tensor_img = transform(pil_img)
 
-        if self.pose_root is not None:
-            pose_path = os.path.join(self.pose_root, f'{os.path.splitext(img)[0]}.json')
-
-            with open(pose_path, 'r') as f:
-                keypoints = json.load(f)
-            
-            keypoints = self.transform_keypoints(keypoints)
-
-        tensor_img, keypoints = transform((pil_img, keypoints))
-
-        occlusion_labels = torch.tensor([])
-
-        if keypoints is not None:
-            occlusion_labels = self.generate_occlusion_labels(keypoints, tensor_img.size(1))
-
-        return tensor_img, self.labels[idx], self.original_labels[idx], occlusion_labels
+        return tensor_img, self.labels[idx], self.original_labels[idx]
 
     def get_num_classes(self):
         return len(list(self.individuals.keys()))
-    
-    def transform_keypoints(self, keypoints):
-        new_kp = []
-
-        for dic in keypoints:
-            for key, value in dic.items():
-                if len(value) == 3 and value[2] == 1:
-                    new_kp.append(value[:2])
-        
-        return torch.tensor(new_kp)
-    
-    def generate_occlusion_labels(self, keypoints, h):
-        occlusion_labels = [0] * self.num_stripes
-
-        for kp in keypoints:
-            label = math.floor(self.num_stripes * (kp[1] / h))
-
-            # just to be safe
-            if label < 0:
-                label = 0
-
-            if label >= self.num_stripes:
-                label = self.num_stripes - 1
-            
-            occlusion_labels[label] = 1
-        
-        return torch.tensor(occlusion_labels)
 
 
 class BatchSampler(Sampler):
@@ -323,10 +230,9 @@ def get_test_data_loader(data_path, extensions, transform, batch_size):
 
 def test():
     train_path = 'C:\\Users\\leona\\Documents\\Dataset\\Market-1501-v15.09.15\\bounding_box_train'
-    train_pose_path = 'C:\\Users\\leona\\Documents\\Dataset\\Market-1501-v15.09.15-pose\\bounding_box_train'
     extensions = ['.jpg']
 
-    dataset = CustomDataset(train_path, train_pose_path, extensions, 6, training=True)
+    dataset = CustomDataset(train_path, extensions, training=True)
 
     print(dataset[148])
 

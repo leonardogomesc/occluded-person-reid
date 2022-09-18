@@ -2,55 +2,77 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 import time
-from utils import train
 from data import CustomDataset, BatchSampler
 from torch.utils.data import DataLoader
 from models import MyModel
 from triplet import batch_hard_mine_triplet, calculate_distance_matrix
 import numpy as np
 import sys
+from datetime import datetime
 
 
 def main(dataset_name):
 
     device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 
-    n_epochs = 80
+    print(device)
+
+    n_epochs = 120
     n_persons = 16
     n_pictures = 4
 
-    if dataset_name == 'market':
-        train_path = 'C:\\Users\\leona\\Documents\\Dataset\\Market-1501-v15.09.15\\bounding_box_train'
-        train_pose_path = 'C:\\Users\\leona\\Documents\\Dataset\\Market-1501-v15.09.15-pose\\bounding_box_train'
-        extensions = ['.jpg']
-        num_stripes = 6
-        lr = 0.02
-        alpha = 0.9
-    elif dataset_name == 'duke':
-        train_path = 'C:\\Users\\leona\\Documents\\Dataset\\Occluded-DukeMTMC-reID\\bounding_box_train'
-        train_pose_path = 'C:\\Users\\leona\\Documents\\Dataset\\Occluded-DukeMTMC-reID-pose\\bounding_box_train'
-        extensions = ['.jpg']
-        num_stripes = 4
-        lr = 0.05
-        alpha = 0.8
+    lr = 3.5e-4
 
-    dataset = CustomDataset(train_path, train_pose_path, extensions, num_stripes, training=True)
+    if dataset_name == 'market-occ':
+        train_path = 'C:\\Users\\leona\\Documents\\Dataset\\Market-1501-v15.09.15\\bounding_box_train'
+        extensions = ['.jpg']
+        margin = 0.3
+        nk = 14
+        lamb_cls = 0.3
+        lamb_tri = 1
+        lamb_div = 1
+    elif dataset_name == 'duke-occ':
+        train_path = 'C:\\Users\\leona\\Documents\\Dataset\\Occluded-DukeMTMC-reID\\bounding_box_train'
+        extensions = ['.jpg']
+        margin = 0.3
+        nk = 14
+        lamb_cls = 0.3
+        lamb_tri = 1
+        lamb_div = 1
+    elif dataset_name == 'market':
+        train_path = 'C:\\Users\\leona\\Documents\\Dataset\\Market-1501-v15.09.15\\bounding_box_train'
+        extensions = ['.jpg']
+        margin = 0.3
+        nk = 6
+        lamb_cls = 1
+        lamb_tri = 1
+        lamb_div = 1
+    elif dataset_name == 'duke':
+        train_path = 'C:\\Users\\leona\\Documents\\Dataset\\DukeMTMC-reID\\bounding_box_train'
+        extensions = ['.jpg']
+        margin = 0.3
+        nk = 14
+        lamb_cls = 1
+        lamb_tri = 1
+        lamb_div = 1
+    
+
+    dataset = CustomDataset(train_path, extensions, training=True)
     batch_sampler = BatchSampler(dataset, n_persons, n_pictures)
     train_loader = DataLoader(dataset, batch_sampler=batch_sampler, num_workers=4)
 
     num_classes = dataset.get_num_classes()
 
-    model = MyModel(num_classes, num_stripes=num_stripes)
+    model = MyModel(num_classes, nk)
     model = model.to(device)
 
     ce = nn.CrossEntropyLoss()
-    tl = nn.TripletMarginLoss()
 
     # optimizer = optim.SGD(model.parameters(), lr=lr)
-    optimizer = optim.Adam(model.parameters(), lr=1e-4)
-    scheduler = optim.lr_scheduler.StepLR(optimizer, 20, gamma=0.5)
+    optimizer = optim.Adam(model.parameters(), lr=lr)
+    scheduler = optim.lr_scheduler.StepLR(optimizer, 40, gamma=0.1)
 
-    save_path = 'checkpoint.pt'
+    save_path = datetime.now().strftime(f'{dataset_name}-%y%m%d%H%M%S.pt')
 
     print('Starting Training')
 
@@ -69,41 +91,65 @@ def main(dataset_name):
         model.train()
 
         for batch_idx, data in enumerate(train_loader):
-            img, person_labels, person_labels_original, occlusion_labels = data
+            img, person_labels, person_labels_original = data
 
             # move to GPU
             img = img.to(device)
             person_labels = person_labels.to(device)
-            occlusion_labels = occlusion_labels.to(device)
 
-            global_feat, global_logits, local_feat_list, local_logits_list, rvd_logits_list = model(img)
+            enc_feat_gap, enc_feat_logits, dec_feat, dec_logits_list = model(img)
 
-            gid_loss = ce(global_logits, person_labels)
+            # loss en
+            l_cls = ce(enc_feat_logits, person_labels)
 
-            distance_matrix = calculate_distance_matrix(occlusion_labels, 
-                                                        occlusion_labels, 
-                                                        local_feat_list, 
-                                                        local_feat_list, 
-                                                        global_feat, 
-                                                        global_feat)
+            distance_matrix = torch.cdist(enc_feat_gap, enc_feat_gap, p=2)
+            l_tri = batch_hard_mine_triplet(distance_matrix, person_labels, margin=margin)
 
+            l_en = (lamb_cls * l_cls) + (lamb_tri * l_tri)
 
-            gtri_loss = batch_hard_mine_triplet(distance_matrix, person_labels)
+            # loss dis
 
-            pid_loss = 0
-            ptri_loss = 0
-            rvd_loss = 0
+            l_cls = 0.0
 
-            for stripe in range(num_stripes):
-                pid_loss += ce(local_logits_list[stripe], person_labels)
-                ptri_loss += batch_hard_mine_triplet(torch.cdist(local_feat_list[stripe], local_feat_list[stripe], p=2), person_labels)
-                rvd_loss += ce(rvd_logits_list[stripe], occlusion_labels[:, stripe])
+            for dec_logits in dec_logits_list:
+                l_cls += ce(dec_logits, person_labels)
+            
+            l_cls /= len(dec_logits_list)
 
-            pid_loss /= num_stripes
-            ptri_loss /= num_stripes
-            rvd_loss /= num_stripes
+            l_tri = 0.0
 
-            loss = ((1 - alpha) * gid_loss) + (alpha * pid_loss) + rvd_loss + ptri_loss + gtri_loss
+            for f in dec_feat:
+                distance_matrix = torch.cdist(f, f, p=2)
+                l_tri += batch_hard_mine_triplet(distance_matrix, person_labels, margin=margin)
+
+            l_tri /= len(dec_feat)
+            
+            l_dis = (lamb_cls * l_cls) + (lamb_tri * l_tri)
+
+            # loss div
+            dec_feat = dec_feat.permute(1, 0, 2)
+
+            dec_feat_inner_matrix = torch.sum(dec_feat.unsqueeze(2)*dec_feat.unsqueeze(1), dim=3)
+
+            dec_feat_norm = torch.norm(dec_feat, p=2, dim=2)
+
+            dec_feat_norm_matrix = dec_feat_norm.unsqueeze(2) * dec_feat_norm.unsqueeze(1)
+
+            dec_feat_matrix = dec_feat_inner_matrix / dec_feat_norm_matrix
+
+            eye = 1 - torch.eye(dec_feat_matrix.size(1), device=device)
+
+            l_div = dec_feat_matrix * eye
+
+            l_div = l_div.view(l_div.size(0), -1)
+
+            l_div = torch.sum(l_div, dim=1)
+
+            l_div /= dec_feat_matrix.size(1) * (dec_feat_matrix.size(1) - 1)
+
+            l_div = torch.mean(l_div)
+
+            loss = l_en + l_dis + (lamb_div * l_div)
 
             optimizer.zero_grad()
             loss.backward()
@@ -114,7 +160,7 @@ def main(dataset_name):
             sys.stdout.write("\r" + '........ mini-batch {} loss: {:.3f}'.format(batch_idx + 1, loss.item()))
             sys.stdout.flush()
         
-        # scheduler.step()
+        scheduler.step()
         
         train_loss /= batch_idx + 1
     
@@ -140,177 +186,10 @@ def main(dataset_name):
         
         print('\n\n')
 
-def main_test(dataset_name, checkpoint_path):
-    device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
-
-    batch_size = 64
-
-    if dataset_name == 'market':
-        test_path = 'C:\\Users\\leona\\Documents\\Dataset\\Market-1501-v15.09.15\\bounding_box_test'
-        test_pose_path = 'C:\\Users\\leona\\Documents\\Dataset\\Market-1501-v15.09.15-pose\\bounding_box_test'
-        query_path = 'C:\\Users\\leona\\Documents\\Dataset\\Market-1501-v15.09.15\\query'
-        query_pose_path = 'C:\\Users\\leona\\Documents\\Dataset\\Market-1501-v15.09.15-pose\\query'
-        extensions = ['.jpg']
-        num_stripes = 6
-        num_classes = 751
-    elif dataset_name == 'duke':
-        test_path = 'C:\\Users\\leona\\Documents\\Dataset\\Occluded-DukeMTMC-reID\\bounding_box_test'
-        test_pose_path = 'C:\\Users\\leona\\Documents\\Dataset\\Occluded-DukeMTMC-reID-pose\\bounding_box_test'
-        query_path = 'C:\\Users\\leona\\Documents\\Dataset\\Occluded-DukeMTMC-reID\\query'
-        query_pose_path = 'C:\\Users\\leona\\Documents\\Dataset\\Occluded-DukeMTMC-reID-pose\\query'
-        extensions = ['.jpg']
-        num_stripes = 4
-        num_classes = 702
-
-    test_dataset = CustomDataset(test_path, test_pose_path, extensions, num_stripes, training=False)
-    query_dataset = CustomDataset(query_path, query_pose_path, extensions, num_stripes, training=False)
-
-    test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False, num_workers=4)
-    test_loader_query = DataLoader(query_dataset, batch_size=batch_size, shuffle=False, num_workers=4)
-
-    model = MyModel(num_classes, num_stripes=num_stripes)
-    model = model.to(device)
-
-    checkpoint = torch.load(checkpoint_path)
-    model.load_state_dict(checkpoint['model'])
-    
-    print('Starting Test')
-
-    test_local_feat_list = []
-    test_global_feat = []
-    test_occlusion_labels = []
-    test_labels = []
-
-    query_local_feat_list = []
-    query_global_feat = []
-    query_occlusion_labels = []
-    query_labels = []
-
-    with torch.no_grad():
-        model.eval()
-
-        for i, data in enumerate(test_loader):
-            img, person_labels, person_labels_original, occlusion_labels = data
-
-            # forward
-            img = img.to(device)
-
-            global_feat, global_logits, local_feat_list, local_logits_list, rvd_logits_list = model(img)
-
-            local_feat_list = torch.stack(local_feat_list, dim=0).cpu()
-            global_feat = global_feat.cpu()
-
-            rvd_logits_list = torch.stack([torch.argmax(torch.nn.functional.softmax(rvdl, dim=1), dim=1) for rvdl in rvd_logits_list], dim=1)
-            rvd_logits_list = rvd_logits_list.cpu()
-
-            person_labels_original = person_labels_original.cpu()
-
-            test_local_feat_list.append(local_feat_list)
-            test_global_feat.append(global_feat)
-            test_occlusion_labels.append(rvd_logits_list)
-            test_labels.append(person_labels_original)
-
-        for i, data in enumerate(test_loader_query):
-            img, person_labels, person_labels_original, occlusion_labels = data
-
-            # forward
-            img = img.to(device)
-
-            global_feat, global_logits, local_feat_list, local_logits_list, rvd_logits_list = model(img)
-
-            local_feat_list = torch.stack(local_feat_list, dim=0).cpu()
-            global_feat = global_feat.cpu()
-
-            rvd_logits_list = torch.stack([torch.argmax(torch.nn.functional.softmax(rvdl, dim=1), dim=1) for rvdl in rvd_logits_list], dim=1)
-            rvd_logits_list = rvd_logits_list.cpu()
-
-            person_labels_original = person_labels_original.cpu()
-
-            query_local_feat_list.append(local_feat_list)
-            query_global_feat.append(global_feat)
-            query_occlusion_labels.append(rvd_logits_list)
-            query_labels.append(person_labels_original)
-
-
-        test_local_feat_list = torch.cat(test_local_feat_list, dim=1)
-        test_global_feat = torch.cat(test_global_feat, dim=0)
-        test_occlusion_labels = torch.cat(test_occlusion_labels, dim=0)
-        test_labels = torch.cat(test_labels, dim=0)
-
-        query_local_feat_list = torch.cat(query_local_feat_list, dim=1)
-        query_global_feat = torch.cat(query_global_feat, dim=0)
-        query_occlusion_labels = torch.cat(query_occlusion_labels, dim=0)
-        query_labels = torch.cat(query_labels, dim=0)
-
-        distance_matrix = calculate_distance_matrix(query_occlusion_labels, 
-                                                    test_occlusion_labels, 
-                                                    query_local_feat_list, 
-                                                    test_local_feat_list, 
-                                                    query_global_feat, 
-                                                    test_global_feat)
-
-        sorted_matrix = torch.argsort(distance_matrix, dim=1)
-
-        rank1 = sorted_matrix[:, :1]
-        rank1_correct = 0
-
-        rank5 = sorted_matrix[:, :5]
-        rank5_correct = 0
-
-        rank10 = sorted_matrix[:, :10]
-        rank10_correct = 0
-
-        total = 0
-
-        for i in range(len(query_labels)):
-            q_label = query_labels[i]
-
-            print([q_label, test_labels[sorted_matrix[i, :10]]])
-
-            if q_label in test_labels[rank1[i]]:
-                rank1_correct += 1
-
-            if q_label in test_labels[rank5[i]]:
-                rank5_correct += 1
-
-            if q_label in test_labels[rank10[i]]:
-                rank10_correct += 1
-
-            total += 1
-
-        print(rank1_correct)
-        print(total)
-        print(distance_matrix.size())
-        
-        print('rank1 acc: ' + str(rank1_correct / total))
-        print('rank5 acc: ' + str(rank5_correct / total))
-        print('rank10 acc: ' + str(rank10_correct / total))
-
-        # map
-
-        expanded_test_labels = test_labels.repeat(query_labels.size()[0], 1)
-
-        sorted_labels_matrix = torch.gather(expanded_test_labels, 1, sorted_matrix)
-
-        query_mask = torch.unsqueeze(query_labels, 1) == sorted_labels_matrix
-
-        cum_true = torch.cumsum(query_mask, dim=1)
-
-        num_pred_pos = torch.cumsum(torch.ones_like(cum_true), dim=1)
-
-        p = query_mask * (cum_true / num_pred_pos)
-
-        ap = torch.sum(p, 1)/torch.sum(query_mask, 1)
-
-        map = torch.mean(ap)
-
-        # map = torch.sum(p)/torch.sum(query_mask)
-
-        print('')
-        print('map: ' + str(map.item()))
-   
 
 if __name__ == '__main__':
-    # main('duke')
-    main_test('market', 'checkpoint_adam.pt')
-
+    main('market-occ')
+    main('duke-occ')
+    main('market')
+    main('duke')
+    

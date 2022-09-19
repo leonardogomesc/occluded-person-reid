@@ -23,11 +23,35 @@ def main_test(dataset_name, checkpoint_path):
         nk = 6
         num_classes = 751
     elif dataset_name == 'duke':
+        test_path = 'C:\\Users\\leona\\Documents\\Dataset\\DukeMTMC-reID\\bounding_box_test'
+        query_path = 'C:\\Users\\leona\\Documents\\Dataset\\DukeMTMC-reID\\query'
+        extensions = ['.jpg']
+        nk = 14
+        num_classes = 702
+    elif dataset_name == 'duke-occ':
         test_path = 'C:\\Users\\leona\\Documents\\Dataset\\Occluded-DukeMTMC-reID\\bounding_box_test'
         query_path = 'C:\\Users\\leona\\Documents\\Dataset\\Occluded-DukeMTMC-reID\\query'
         extensions = ['.jpg']
         nk = 14
         num_classes = 702
+    elif dataset_name == 'occ-reid':
+        test_path = 'C:\\Users\\leona\\Documents\\Dataset\\partial_dataset\\OccludedREID\\gallery'
+        query_path = 'C:\\Users\\leona\\Documents\\Dataset\\partial_dataset\\OccludedREID\\query'
+        extensions = ['.jpg']
+        nk = 14
+        num_classes = 751
+    elif dataset_name == 'part-reid':
+        test_path = 'C:\\Users\\leona\\Documents\\Dataset\\partial_dataset\\Partial_REID\\whole_body_images'
+        query_path = 'C:\\Users\\leona\\Documents\\Dataset\\partial_dataset\\Partial_REID\\partial_body_images'
+        extensions = ['.jpg']
+        nk = 14
+        num_classes = 751
+    elif dataset_name == 'part-ilids':
+        test_path = 'C:\\Users\\leona\\Documents\\Dataset\\partial_dataset\\PartialiLIDS\\gallery'
+        query_path = 'C:\\Users\\leona\\Documents\\Dataset\\partial_dataset\\PartialiLIDS\\query'
+        extensions = ['.jpg']
+        nk = 14
+        num_classes = 751
 
 
     test_dataset = CustomDataset(test_path, extensions, training=False)
@@ -43,6 +67,7 @@ def main_test(dataset_name, checkpoint_path):
     model.load_state_dict(checkpoint['model'])
     
     print('Starting Test')
+    print(dataset_name)
 
     test_features = []
     test_labels = []
@@ -99,11 +124,11 @@ def main_test(dataset_name, checkpoint_path):
         rank1 = sorted_matrix[:, :1]
         rank1_correct = 0
 
+        rank3 = sorted_matrix[:, :3]
+        rank3_correct = 0
+
         rank5 = sorted_matrix[:, :5]
         rank5_correct = 0
-
-        rank10 = sorted_matrix[:, :10]
-        rank10_correct = 0
 
         total = 0
 
@@ -113,17 +138,17 @@ def main_test(dataset_name, checkpoint_path):
             if q_label in test_labels[rank1[i]]:
                 rank1_correct += 1
 
+            if q_label in test_labels[rank3[i]]:
+                rank3_correct += 1
+
             if q_label in test_labels[rank5[i]]:
                 rank5_correct += 1
-
-            if q_label in test_labels[rank10[i]]:
-                rank10_correct += 1
 
             total += 1
 
         print('rank1 acc: ' + str(rank1_correct / total))
+        print('rank3 acc: ' + str(rank3_correct / total))
         print('rank5 acc: ' + str(rank5_correct / total))
-        print('rank10 acc: ' + str(rank10_correct / total))
 
         # map
 
@@ -150,6 +175,11 @@ def main_test(dataset_name, checkpoint_path):
    
 
 if __name__ == '__main__':
-    # main('duke')
-    main_test('duke', 'duke-220918225303.pt')
+    # main_test('market', 'market-220919043253.pt')
+    # main_test('duke', 'duke-220919064246.pt')
+    # main_test('duke-occ', 'duke-occ-220919015509.pt')
+    # main_test('occ-reid', 'market-occ-220918234142.pt')
+    main_test('part-reid', 'market-occ-220918234142.pt')
+    main_test('part-ilids', 'market-occ-220918234142.pt')
 
+    

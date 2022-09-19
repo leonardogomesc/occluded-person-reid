@@ -143,7 +143,7 @@ def main_test(dataset_name, checkpoint_path):
     device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 
     batch_size = 64
-
+    
     if dataset_name == 'market':
         test_path = 'C:\\Users\\leona\\Documents\\Dataset\\Market-1501-v15.09.15\\bounding_box_test'
         test_pose_path = 'C:\\Users\\leona\\Documents\\Dataset\\Market-1501-v15.09.15-pose\\bounding_box_test'
@@ -152,7 +152,7 @@ def main_test(dataset_name, checkpoint_path):
         extensions = ['.jpg']
         num_stripes = 6
         num_classes = 751
-    elif dataset_name == 'duke':
+    elif dataset_name == 'duke-occ':
         test_path = 'C:\\Users\\leona\\Documents\\Dataset\\Occluded-DukeMTMC-reID\\bounding_box_test'
         test_pose_path = 'C:\\Users\\leona\\Documents\\Dataset\\Occluded-DukeMTMC-reID-pose\\bounding_box_test'
         query_path = 'C:\\Users\\leona\\Documents\\Dataset\\Occluded-DukeMTMC-reID\\query'
@@ -160,6 +160,30 @@ def main_test(dataset_name, checkpoint_path):
         extensions = ['.jpg']
         num_stripes = 4
         num_classes = 702
+    elif dataset_name == 'occ-reid':
+        test_path = 'C:\\Users\\leona\\Documents\\Dataset\\partial_dataset\\OccludedREID\\gallery'
+        test_pose_path = None
+        query_path = 'C:\\Users\\leona\\Documents\\Dataset\\partial_dataset\\OccludedREID\\query'
+        query_pose_path = None
+        extensions = ['.jpg']
+        num_stripes = 6
+        num_classes = 751
+    elif dataset_name == 'part-reid':
+        test_path = 'C:\\Users\\leona\\Documents\\Dataset\\partial_dataset\\Partial_REID\\whole_body_images'
+        test_pose_path = None
+        query_path = 'C:\\Users\\leona\\Documents\\Dataset\\partial_dataset\\Partial_REID\\partial_body_images'
+        query_pose_path = None
+        extensions = ['.jpg']
+        num_stripes = 6
+        num_classes = 751
+    elif dataset_name == 'part-ilids':
+        test_path = 'C:\\Users\\leona\\Documents\\Dataset\\partial_dataset\\PartialiLIDS\\gallery'
+        test_pose_path = None
+        query_path = 'C:\\Users\\leona\\Documents\\Dataset\\partial_dataset\\PartialiLIDS\\query'
+        query_pose_path = None
+        extensions = ['.jpg']
+        num_stripes = 6
+        num_classes = 751
 
     test_dataset = CustomDataset(test_path, test_pose_path, extensions, num_stripes, training=False)
     query_dataset = CustomDataset(query_path, query_pose_path, extensions, num_stripes, training=False)
@@ -174,6 +198,7 @@ def main_test(dataset_name, checkpoint_path):
     model.load_state_dict(checkpoint['model'])
     
     print('Starting Test')
+    print(dataset_name)
 
     test_local_feat_list = []
     test_global_feat = []
@@ -253,37 +278,37 @@ def main_test(dataset_name, checkpoint_path):
         rank1 = sorted_matrix[:, :1]
         rank1_correct = 0
 
+        rank3 = sorted_matrix[:, :3]
+        rank3_correct = 0
+
         rank5 = sorted_matrix[:, :5]
         rank5_correct = 0
-
-        rank10 = sorted_matrix[:, :10]
-        rank10_correct = 0
 
         total = 0
 
         for i in range(len(query_labels)):
             q_label = query_labels[i]
 
-            print([q_label, test_labels[sorted_matrix[i, :10]]])
+            # print([q_label, test_labels[sorted_matrix[i, :10]]])
 
             if q_label in test_labels[rank1[i]]:
                 rank1_correct += 1
 
+            if q_label in test_labels[rank3[i]]:
+                rank3_correct += 1
+
             if q_label in test_labels[rank5[i]]:
                 rank5_correct += 1
 
-            if q_label in test_labels[rank10[i]]:
-                rank10_correct += 1
-
             total += 1
 
-        print(rank1_correct)
-        print(total)
-        print(distance_matrix.size())
+        # print(rank1_correct)
+        # print(total)
+        # print(distance_matrix.size())
         
         print('rank1 acc: ' + str(rank1_correct / total))
+        print('rank3 acc: ' + str(rank3_correct / total))
         print('rank5 acc: ' + str(rank5_correct / total))
-        print('rank10 acc: ' + str(rank10_correct / total))
 
         # map
 
@@ -310,6 +335,9 @@ def main_test(dataset_name, checkpoint_path):
    
 
 if __name__ == '__main__':
-    # main('duke')
-    main_test('market', 'checkpoint_adam.pt')
+    main_test('market', 'checkpoint_adam_bck.pt')
+    main_test('duke-occ', 'checkpoint_adam_duke_bck.pt')
+    main_test('occ-reid', 'checkpoint_adam_bck.pt')
+    main_test('part-reid', 'checkpoint_adam_bck.pt')
+    main_test('part-ilids', 'checkpoint_adam_bck.pt')
 

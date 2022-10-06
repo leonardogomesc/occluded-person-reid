@@ -6,6 +6,7 @@ import random
 from PIL import Image
 import math
 import json
+import numbers
 
 # color jitter ?
 
@@ -144,6 +145,56 @@ class Normalize:
         return img, keypoints
 
 
+class ColorJitter:
+    def __init__(self, brightness=0, contrast=0, saturation=0, hue=0):
+        brightness = self._check_input(brightness, "brightness")
+        contrast = self._check_input(contrast, "contrast")
+        saturation = self._check_input(saturation, "saturation")
+        hue = self._check_input(hue, "hue", center=0, bound=(-0.5, 0.5), clip_first_on_zero=False)
+
+        self.fn_idx, self.brightness_factor, self.contrast_factor, self.saturation_factor, self.hue_factor = transforms.ColorJitter.get_params(brightness, 
+                                                                                                                                                contrast, 
+                                                                                                                                                saturation, 
+                                                                                                                                                hue)
+
+
+    def _check_input(self, value, name, center=1, bound=(0, float("inf")), clip_first_on_zero=True):
+        if isinstance(value, numbers.Number):
+            if value < 0:
+                raise ValueError(f"If {name} is a single number, it must be non negative.")
+            value = [center - float(value), center + float(value)]
+            if clip_first_on_zero:
+                value[0] = max(value[0], 0.0)
+        elif isinstance(value, (tuple, list)) and len(value) == 2:
+            if not bound[0] <= value[0] <= value[1] <= bound[1]:
+                raise ValueError(f"{name} values should be between {bound}")
+        else:
+            raise TypeError(f"{name} should be a single number or a list/tuple with length 2.")
+
+        # if value is 0 or (1., 1.) for brightness/contrast/saturation
+        # or (0., 0.) for hue, do nothing
+        if value[0] == value[1] == center:
+            value = None
+
+        return value
+
+    def __call__(self, data):
+        img = data[0]
+        keypoints = data[1]
+
+        for fn_id in self.fn_idx:
+            if fn_id == 0 and self.brightness_factor is not None:
+                img = transforms.functional.adjust_brightness(img, self.brightness_factor)
+            elif fn_id == 1 and self.contrast_factor is not None:
+                img = transforms.functional.adjust_contrast(img, self.contrast_factor)
+            elif fn_id == 2 and self.saturation_factor is not None:
+                img = transforms.functional.adjust_saturation(img, self.saturation_factor)
+            elif fn_id == 3 and self.hue_factor is not None:
+                img = transforms.functional.adjust_hue(img, self.hue_factor)
+
+        return img, keypoints
+
+
 def get_transform(training=True, hw=(384, 128), inc=1.05):
 
     transform_list = []
@@ -153,6 +204,7 @@ def get_transform(training=True, hw=(384, 128), inc=1.05):
         transform_list.append(Resize(nhw))
         transform_list.append(RandomHorizontalFlip())
         transform_list.append(RandomCrop(hw))
+        transform_list.append(ColorJitter(brightness=0.25, contrast=0.25, saturation=0.25, hue=0.1))
         transform_list.append(ToTensor())
         transform_list.append(Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]))
         transform_list.append(RandomErasing())
@@ -327,6 +379,9 @@ def test():
     extensions = ['.jpg']
 
     dataset = CustomDataset(train_path, train_pose_path, extensions, 6, training=True)
+
+    pil_img = transforms.ToPILImage()(dataset[148][0])
+    pil_img.show()
 
     print(dataset[148])
 

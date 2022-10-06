@@ -9,6 +9,7 @@ from models import MyModel
 from triplet import batch_hard_mine_triplet, calculate_distance_matrix
 import numpy as np
 import sys
+from datetime import datetime
 
 
 def main(dataset_name):
@@ -44,12 +45,13 @@ def main(dataset_name):
     model = model.to(device)
 
     ce = nn.CrossEntropyLoss()
+    bce = nn.BCEWithLogitsLoss()
 
     # optimizer = optim.SGD(model.parameters(), lr=lr)
     optimizer = optim.Adam(model.parameters(), lr=1e-4)
     scheduler = optim.lr_scheduler.StepLR(optimizer, 20, gamma=0.5)
 
-    save_path = 'checkpoint.pt'
+    save_path = datetime.now().strftime(f'{dataset_name}-%y%m%d%H%M%S.pt')
 
     print('Starting Training')
 
@@ -96,7 +98,8 @@ def main(dataset_name):
             for stripe in range(num_stripes):
                 pid_loss += ce(local_logits_list[stripe], person_labels)
                 ptri_loss += batch_hard_mine_triplet(torch.cdist(local_feat_list[stripe], local_feat_list[stripe], p=2), person_labels)
-                rvd_loss += ce(rvd_logits_list[stripe], occlusion_labels[:, stripe])
+
+                rvd_loss += bce(rvd_logits_list[stripe], occlusion_labels[:, stripe].unsqueeze(1).float())
 
             pid_loss /= num_stripes
             ptri_loss /= num_stripes
@@ -224,7 +227,7 @@ def main_test(dataset_name, checkpoint_path):
             local_feat_list = torch.stack(local_feat_list, dim=0).cpu()
             global_feat = global_feat.cpu()
 
-            rvd_logits_list = torch.stack([torch.argmax(torch.nn.functional.softmax(rvdl, dim=1), dim=1) for rvdl in rvd_logits_list], dim=1)
+            rvd_logits_list = torch.stack([(torch.sigmoid(rvdl.view(-1)) > 0.5).int() for rvdl in rvd_logits_list], dim=1)
             rvd_logits_list = rvd_logits_list.cpu()
 
             person_labels_original = person_labels_original.cpu()
@@ -245,7 +248,7 @@ def main_test(dataset_name, checkpoint_path):
             local_feat_list = torch.stack(local_feat_list, dim=0).cpu()
             global_feat = global_feat.cpu()
 
-            rvd_logits_list = torch.stack([torch.argmax(torch.nn.functional.softmax(rvdl, dim=1), dim=1) for rvdl in rvd_logits_list], dim=1)
+            rvd_logits_list = torch.stack([(torch.sigmoid(rvdl.view(-1)) > 0.5).int() for rvdl in rvd_logits_list], dim=1)
             rvd_logits_list = rvd_logits_list.cpu()
 
             person_labels_original = person_labels_original.cpu()
@@ -335,9 +338,11 @@ def main_test(dataset_name, checkpoint_path):
    
 
 if __name__ == '__main__':
-    main_test('market', 'checkpoint_adam_bck.pt')
-    main_test('duke-occ', 'checkpoint_adam_duke_bck.pt')
-    main_test('occ-reid', 'checkpoint_adam_bck.pt')
-    main_test('part-reid', 'checkpoint_adam_bck.pt')
-    main_test('part-ilids', 'checkpoint_adam_bck.pt')
+    main('market')
+
+    # main_test('market', 'checkpoint_adam_bck.pt')
+    # main_test('duke-occ', 'checkpoint_adam_duke_bck.pt')
+    # main_test('occ-reid', 'checkpoint_adam_bck.pt')
+    # main_test('part-reid', 'checkpoint_adam_bck.pt')
+    # main_test('part-ilids', 'checkpoint_adam_bck.pt')
 

@@ -39,7 +39,7 @@ class MyModel(nn.Module):
         self.rvd_fc_list = nn.ModuleList()
 
         for _ in range(num_stripes):
-            fc = nn.Linear(local_conv_out_channels, 2)
+            fc = nn.Linear(local_conv_out_channels, 1)
             init.normal_(fc.weight, std=0.001)
             init.constant_(fc.bias, 0)
             self.rvd_fc_list.append(fc)
@@ -80,7 +80,7 @@ class MyModel(nn.Module):
             rvd_conv_feat = self.rvd_conv_list[i](local_feat)
             # shape [N, c]
             rvd_conv_feat = rvd_conv_feat.view(rvd_conv_feat.size(0), -1)
-            # shape [N, 2]
+            # shape [N, 1]
             rvd_logits_list.append(self.rvd_fc_list[i](rvd_conv_feat))
         
 

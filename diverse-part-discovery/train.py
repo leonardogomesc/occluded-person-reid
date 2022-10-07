@@ -190,7 +190,7 @@ def main(dataset_name):
 
 if __name__ == '__main__':
     main('market-occ')
-    main('duke-occ')
-    main('market')
-    main('duke')
+    # main('duke-occ')
+    # main('market')
+    # main('duke')
 

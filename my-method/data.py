@@ -8,7 +8,6 @@ import math
 import json
 import numbers
 
-# color jitter ?
 
 class Resize:
     def __init__(self, new_size):

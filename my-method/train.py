@@ -3,7 +3,7 @@ import torch.nn as nn
 import torch.optim as optim
 import time
 from utils import train
-from data import CustomDataset, BatchSampler
+from data import CustomDataset, BatchSampler, get_transform_1, get_transform_2
 from torch.utils.data import DataLoader
 from models import MyModel
 from triplet import batch_hard_mine_triplet, calculate_distance_matrix
@@ -20,22 +20,29 @@ def main(dataset_name):
     n_persons = 16
     n_pictures = 4
 
-    if dataset_name == 'market':
+    if dataset_name == 'market_occ':
         train_path = 'C:\\Users\\leona\\Documents\\Dataset\\Market-1501-v15.09.15\\bounding_box_train'
-        train_pose_path = 'C:\\Users\\leona\\Documents\\Dataset\\Market-1501-v15.09.15-pose\\bounding_box_train'
         extensions = ['.jpg']
         num_stripes = 6
         lr = 0.02
         alpha = 0.9
+        transform_fn = get_transform_2
+    elif dataset_name == 'market':
+        train_path = 'C:\\Users\\leona\\Documents\\Dataset\\Market-1501-v15.09.15\\bounding_box_train'
+        extensions = ['.jpg']
+        num_stripes = 6
+        lr = 0.02
+        alpha = 0.9
+        transform_fn = get_transform_1
     elif dataset_name == 'duke':
         train_path = 'C:\\Users\\leona\\Documents\\Dataset\\Occluded-DukeMTMC-reID\\bounding_box_train'
-        train_pose_path = 'C:\\Users\\leona\\Documents\\Dataset\\Occluded-DukeMTMC-reID-pose\\bounding_box_train'
         extensions = ['.jpg']
         num_stripes = 4
         lr = 0.05
         alpha = 0.8
+        transform_fn = get_transform_1
 
-    dataset = CustomDataset(train_path, train_pose_path, extensions, num_stripes, training=True)
+    dataset = CustomDataset(train_path, extensions, num_stripes, transform_fn=transform_fn, training=True)
     batch_sampler = BatchSampler(dataset, n_persons, n_pictures)
     train_loader = DataLoader(dataset, batch_sampler=batch_sampler, num_workers=4)
 
@@ -155,6 +162,7 @@ def main_test(dataset_name, checkpoint_path):
         extensions = ['.jpg']
         num_stripes = 6
         num_classes = 751
+        transform_fn = get_transform_1
     elif dataset_name == 'duke-occ':
         test_path = 'C:\\Users\\leona\\Documents\\Dataset\\Occluded-DukeMTMC-reID\\bounding_box_test'
         test_pose_path = 'C:\\Users\\leona\\Documents\\Dataset\\Occluded-DukeMTMC-reID-pose\\bounding_box_test'
@@ -163,6 +171,7 @@ def main_test(dataset_name, checkpoint_path):
         extensions = ['.jpg']
         num_stripes = 4
         num_classes = 702
+        transform_fn = get_transform_1
     elif dataset_name == 'occ-reid':
         test_path = 'C:\\Users\\leona\\Documents\\Dataset\\partial_dataset\\OccludedREID\\gallery'
         test_pose_path = None
@@ -171,6 +180,7 @@ def main_test(dataset_name, checkpoint_path):
         extensions = ['.jpg']
         num_stripes = 6
         num_classes = 751
+        transform_fn = get_transform_2
     elif dataset_name == 'part-reid':
         test_path = 'C:\\Users\\leona\\Documents\\Dataset\\partial_dataset\\Partial_REID\\whole_body_images'
         test_pose_path = None
@@ -179,6 +189,7 @@ def main_test(dataset_name, checkpoint_path):
         extensions = ['.jpg']
         num_stripes = 6
         num_classes = 751
+        transform_fn = get_transform_2
     elif dataset_name == 'part-ilids':
         test_path = 'C:\\Users\\leona\\Documents\\Dataset\\partial_dataset\\PartialiLIDS\\gallery'
         test_pose_path = None
@@ -187,9 +198,10 @@ def main_test(dataset_name, checkpoint_path):
         extensions = ['.jpg']
         num_stripes = 6
         num_classes = 751
+        transform_fn = get_transform_2
 
-    test_dataset = CustomDataset(test_path, test_pose_path, extensions, num_stripes, training=False)
-    query_dataset = CustomDataset(query_path, query_pose_path, extensions, num_stripes, training=False)
+    test_dataset = CustomDataset(test_path, test_pose_path, extensions, num_stripes, transform_fn=transform_fn, training=False)
+    query_dataset = CustomDataset(query_path, query_pose_path, extensions, num_stripes, transform_fn=transform_fn, training=False)
 
     test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=True, num_workers=4)
     test_loader_query = DataLoader(query_dataset, batch_size=batch_size, shuffle=True, num_workers=4)
@@ -338,11 +350,13 @@ def main_test(dataset_name, checkpoint_path):
    
 
 if __name__ == '__main__':
-    # main('market')
+    main('market_occ')
+    main('market')
+    main('duke')
 
     # main_test('market', 'checkpoint_adam_bck.pt')
     # main_test('duke-occ', 'checkpoint_adam_duke_bck.pt')
-    main_test('occ-reid', 'market-221006035932.pt')
-    main_test('part-reid', 'market-221006035932.pt')
-    main_test('part-ilids', 'market-221006035932.pt')
+    # main_test('occ-reid', 'market-221006035932.pt')
+    # main_test('part-reid', 'market-221006035932.pt')
+    # main_test('part-ilids', 'market-221006035932.pt')
 

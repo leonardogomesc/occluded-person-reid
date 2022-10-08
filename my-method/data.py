@@ -80,6 +80,93 @@ class RandomErasing:
 
         return img
 
+class CustomRandomErasing:
+    def __init__(self, num_stripes, p=1.0, height_range=(0.1, 0.4), width_range=(0.7, 0.9), v = 'random', percentage_covered=0.6):
+        self.num_stripes = num_stripes
+        self.set_variables = True
+        self.apply_transform = random.random() < p
+        self.height_range = height_range
+        self.width_range = width_range
+        self.v = v
+        self.percentage_covered = percentage_covered
+    
+    def __call__(self, img):
+        occlusion_labels = [1] * self.num_stripes
+
+        if not self.apply_transform:
+            return img, torch.tensor(occlusion_labels)
+        
+        if self.set_variables:
+
+            img_c, img_h, img_w = img.shape[-3], img.shape[-2], img.shape[-1]
+
+            self.h = random.randint(int(img_h * self.height_range[0]), int(img_h * self.height_range[1]))
+            self.w = random.randint(int(img_w * self.width_range[0]), int(img_w * self.width_range[1]))
+
+            self.x = random.randint(0, img_w - self.w)
+            self.y = random.randint(0, img_h - self.h)
+
+            if self.v == 'random':
+                self.v = torch.rand(img_c, self.h, self.w)
+            elif self.v == 'random_solid':
+                self.v = torch.rand(img_c, 1, 1)
+            else:
+                v = torch.tensor(list(self.v))[:, None, None]
+            
+            self.set_variables = False
+
+        
+        img[:, self.y:self.y+self.h, self.x:self.x+self.w] = self.v
+
+        stripe_h = img.size(1) / self.num_stripes
+
+        # debug
+
+        '''for i in range(self.num_stripes-1):
+            img[:, (i + 1) * int(stripe_h), :] = torch.tensor([1.0, 0, 0])[:, None]'''
+
+        # calculate the stripes that are occluded
+
+        first_stripe = math.floor(self.y / stripe_h)
+
+        last_stripe = math.floor((self.y + self.h) / stripe_h)
+
+        # check if first_stripe is included
+
+        first_stripe_extra = stripe_h - (self.y % stripe_h)
+
+        if first_stripe_extra > self.h:
+            first_stripe_extra = self.h
+        
+        if first_stripe_extra / stripe_h < self.percentage_covered:
+            first_stripe += 1
+        
+
+        # check if last stripe is included
+
+        last_stripe_extra = (self.y + self.h) % stripe_h
+
+        if last_stripe_extra > self.h:
+            last_stripe_extra = self.h
+        
+        if last_stripe_extra / stripe_h < self.percentage_covered:
+            last_stripe -= 1
+
+        
+        # erase is too small
+
+        if first_stripe > last_stripe:
+            return img, torch.tensor(occlusion_labels)
+        
+
+        n_stripes = last_stripe - first_stripe + 1
+
+        for i in range(n_stripes):
+            occlusion_labels[first_stripe + i] = 0
+
+
+        return img, torch.tensor(occlusion_labels)
+
 
 class ToTensor:
     def __call__(self, img):
@@ -91,8 +178,8 @@ class Normalize:
         self.mean = mean
         self.std = std
 
-    def __call__(self, img):
-        return transforms.functional.normalize(img, self.mean, self.std)
+    def __call__(self, data):
+        return transforms.functional.normalize(data[0], self.mean, self.std), data[1]
 
 
 
@@ -144,7 +231,27 @@ class ColorJitter:
         return img
 
 
-def get_transform(training=True, hw=(256, 128), inc=1.05):
+def get_transform_1(num_stripes, training=True, hw=(384, 128), inc=1.05):
+
+    transform_list = []
+
+    if training:
+        nhw = (int(hw[0]*inc), int(hw[1]*inc))
+        transform_list.append(Resize(nhw))
+        transform_list.append(RandomHorizontalFlip())
+        transform_list.append(RandomCrop(hw))
+        transform_list.append(ToTensor())
+        transform_list.append(CustomRandomErasing(num_stripes))
+        transform_list.append(Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]))
+    else:
+        transform_list.append(Resize(hw))
+        transform_list.append(ToTensor())
+        transform_list.append(Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]))
+    
+    return transforms.Compose(transform_list)
+
+
+def get_transform_2(num_stripes, training=True, hw=(384, 128), inc=1.05):
 
     transform_list = []
 
@@ -155,8 +262,8 @@ def get_transform(training=True, hw=(256, 128), inc=1.05):
         transform_list.append(RandomCrop(hw))
         transform_list.append(ColorJitter(brightness=0.25, contrast=0.25, saturation=0.25, hue=0.1))
         transform_list.append(ToTensor())
+        transform_list.append(CustomRandomErasing(num_stripes))
         transform_list.append(Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]))
-        transform_list.append(RandomErasing())
     else:
         transform_list.append(Resize(hw))
         transform_list.append(ToTensor())
@@ -167,9 +274,11 @@ def get_transform(training=True, hw=(256, 128), inc=1.05):
 
 class CustomDataset(Dataset):
 
-    def __init__(self, root, extensions, training=True):
+    def __init__(self, root, extensions, num_stripes, transform_fn=get_transform_1, training=True):
         self.root = root
         self.training = training
+        self.num_stripes = num_stripes
+        self.transform_fn = transform_fn
 
         self.individuals = {}
 
@@ -205,15 +314,15 @@ class CustomDataset(Dataset):
         return len(self.files)
 
     def __getitem__(self, idx):
-        transform = get_transform(training=self.training)
+        transform = self.transform_fn(self.num_stripes, training=self.training)
 
         img = self.files[idx]
         path = os.path.join(self.root, img)
         pil_img = Image.open(path)
 
-        tensor_img = transform(pil_img)
+        tensor_img, occlusion_labels = transform(pil_img)
 
-        return tensor_img, self.labels[idx], self.original_labels[idx]
+        return tensor_img, self.labels[idx], self.original_labels[idx], occlusion_labels
 
     def get_num_classes(self):
         return len(list(self.individuals.keys()))
@@ -282,9 +391,14 @@ def test():
     train_path = 'C:\\Users\\leona\\Documents\\Dataset\\Market-1501-v15.09.15\\bounding_box_train'
     extensions = ['.jpg']
 
-    dataset = CustomDataset(train_path, extensions, training=True)
+    dataset = CustomDataset(train_path, extensions, 6, transform_fn=get_transform_1, training=True)
 
-    print(dataset[148])
+    tensor_img, labels, original_labels, occlusion_labels = dataset[148]
+
+    pil_img = transforms.ToPILImage()(tensor_img)
+    pil_img.show()
+
+    print((tensor_img, labels, original_labels, occlusion_labels))
 
 
 if __name__ == '__main__':

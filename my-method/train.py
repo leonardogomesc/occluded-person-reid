@@ -16,7 +16,7 @@ def main(dataset_name):
 
     device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 
-    n_epochs = 80
+    n_epochs = 120
     n_persons = 16
     n_pictures = 4
 
@@ -55,8 +55,8 @@ def main(dataset_name):
     bce = nn.BCEWithLogitsLoss()
 
     # optimizer = optim.SGD(model.parameters(), lr=lr)
-    optimizer = optim.Adam(model.parameters(), lr=1e-4)
-    scheduler = optim.lr_scheduler.StepLR(optimizer, 20, gamma=0.5)
+    optimizer = optim.Adam(model.parameters(), lr=3.5e-4)
+    scheduler = optim.lr_scheduler.StepLR(optimizer, 40, gamma=0.1)
 
     save_path = datetime.now().strftime(f'{dataset_name}-%y%m%d%H%M%S.pt')
 
@@ -123,7 +123,7 @@ def main(dataset_name):
             sys.stdout.write("\r" + '........ mini-batch {} loss: {:.3f}'.format(batch_idx + 1, loss.item()))
             sys.stdout.flush()
         
-        # scheduler.step()
+        scheduler.step()
         
         train_loss /= batch_idx + 1
     
@@ -156,52 +156,42 @@ def main_test(dataset_name, checkpoint_path):
     
     if dataset_name == 'market':
         test_path = 'C:\\Users\\leona\\Documents\\Dataset\\Market-1501-v15.09.15\\bounding_box_test'
-        test_pose_path = 'C:\\Users\\leona\\Documents\\Dataset\\Market-1501-v15.09.15-pose\\bounding_box_test'
         query_path = 'C:\\Users\\leona\\Documents\\Dataset\\Market-1501-v15.09.15\\query'
-        query_pose_path = 'C:\\Users\\leona\\Documents\\Dataset\\Market-1501-v15.09.15-pose\\query'
         extensions = ['.jpg']
         num_stripes = 6
         num_classes = 751
         transform_fn = get_transform_1
     elif dataset_name == 'duke-occ':
         test_path = 'C:\\Users\\leona\\Documents\\Dataset\\Occluded-DukeMTMC-reID\\bounding_box_test'
-        test_pose_path = 'C:\\Users\\leona\\Documents\\Dataset\\Occluded-DukeMTMC-reID-pose\\bounding_box_test'
         query_path = 'C:\\Users\\leona\\Documents\\Dataset\\Occluded-DukeMTMC-reID\\query'
-        query_pose_path = 'C:\\Users\\leona\\Documents\\Dataset\\Occluded-DukeMTMC-reID-pose\\query'
         extensions = ['.jpg']
         num_stripes = 4
         num_classes = 702
         transform_fn = get_transform_1
     elif dataset_name == 'occ-reid':
         test_path = 'C:\\Users\\leona\\Documents\\Dataset\\partial_dataset\\OccludedREID\\gallery'
-        test_pose_path = None
         query_path = 'C:\\Users\\leona\\Documents\\Dataset\\partial_dataset\\OccludedREID\\query'
-        query_pose_path = None
         extensions = ['.jpg']
         num_stripes = 6
         num_classes = 751
         transform_fn = get_transform_2
     elif dataset_name == 'part-reid':
         test_path = 'C:\\Users\\leona\\Documents\\Dataset\\partial_dataset\\Partial_REID\\whole_body_images'
-        test_pose_path = None
         query_path = 'C:\\Users\\leona\\Documents\\Dataset\\partial_dataset\\Partial_REID\\partial_body_images'
-        query_pose_path = None
         extensions = ['.jpg']
         num_stripes = 6
         num_classes = 751
         transform_fn = get_transform_2
     elif dataset_name == 'part-ilids':
         test_path = 'C:\\Users\\leona\\Documents\\Dataset\\partial_dataset\\PartialiLIDS\\gallery'
-        test_pose_path = None
         query_path = 'C:\\Users\\leona\\Documents\\Dataset\\partial_dataset\\PartialiLIDS\\query'
-        query_pose_path = None
         extensions = ['.jpg']
         num_stripes = 6
         num_classes = 751
         transform_fn = get_transform_2
 
-    test_dataset = CustomDataset(test_path, test_pose_path, extensions, num_stripes, transform_fn=transform_fn, training=False)
-    query_dataset = CustomDataset(query_path, query_pose_path, extensions, num_stripes, transform_fn=transform_fn, training=False)
+    test_dataset = CustomDataset(test_path, extensions, num_stripes, transform_fn=transform_fn, training=False)
+    query_dataset = CustomDataset(query_path, extensions, num_stripes, transform_fn=transform_fn, training=False)
 
     test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=True, num_workers=4)
     test_loader_query = DataLoader(query_dataset, batch_size=batch_size, shuffle=True, num_workers=4)
@@ -351,12 +341,12 @@ def main_test(dataset_name, checkpoint_path):
 
 if __name__ == '__main__':
     main('market_occ')
-    main('market')
-    main('duke')
+    # main('market')
+    # main('duke')
 
-    # main_test('market', 'checkpoint_adam_bck.pt')
-    # main_test('duke-occ', 'checkpoint_adam_duke_bck.pt')
-    # main_test('occ-reid', 'market-221006035932.pt')
-    # main_test('part-reid', 'market-221006035932.pt')
-    # main_test('part-ilids', 'market-221006035932.pt')
+    # main_test('market', 'market-221008092507.pt')
+    # main_test('duke-occ', 'duke-221008113222.pt')
+    # main_test('occ-reid', 'market_occ-221008071721.pt')
+    # main_test('part-reid', 'market_occ-221008071721.pt')
+    # main_test('part-ilids', 'market_occ-221008071721.pt')
 

@@ -179,7 +179,10 @@ class Normalize:
         self.std = std
 
     def __call__(self, data):
-        return transforms.functional.normalize(data[0], self.mean, self.std), data[1]
+        if isinstance(data, tuple):
+            return transforms.functional.normalize(data[0], self.mean, self.std), data[1]
+        else:
+            return transforms.functional.normalize(data, self.mean, self.std), torch.tensor([])
 
 
 
@@ -260,7 +263,7 @@ def get_transform_2(num_stripes, training=True, hw=(384, 128), inc=1.05):
         transform_list.append(Resize(nhw))
         transform_list.append(RandomHorizontalFlip())
         transform_list.append(RandomCrop(hw))
-        transform_list.append(ColorJitter(brightness=0.25, contrast=0.25, saturation=0.25, hue=0.1))
+        transform_list.append(ColorJitter(brightness=0.25, contrast=0.15, saturation=0.25, hue=0))
         transform_list.append(ToTensor())
         transform_list.append(CustomRandomErasing(num_stripes))
         transform_list.append(Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]))

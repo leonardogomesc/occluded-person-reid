@@ -81,7 +81,7 @@ class RandomErasing:
         return img
 
 class CustomRandomErasing:
-    def __init__(self, num_stripes, p=1.0, height_range=(0.1, 0.4), width_range=(0.7, 0.9), v = 'random', percentage_covered=0.6):
+    def __init__(self, num_stripes, p=1.0, height_range=(0.1, 0.4), width_range=(0.7, 0.9), v='histogram', percentage_covered=0.6):
         self.num_stripes = num_stripes
         self.set_variables = True
         self.apply_transform = random.random() < p
@@ -110,8 +110,23 @@ class CustomRandomErasing:
                 self.v = torch.rand(img_c, self.h, self.w)
             elif self.v == 'random_solid':
                 self.v = torch.rand(img_c, 1, 1)
+            elif self.v == 'histogram':
+                pil_img = transforms.ToPILImage()(img)
+
+                r, g, b = pil_img.split()
+
+                r = r.histogram()
+                g = g.histogram()
+                b = b.histogram()
+
+                r = random.choices(list(range(256)), weights=r, k=1)[0]
+                g = random.choices(list(range(256)), weights=g, k=1)[0]
+                b = random.choices(list(range(256)), weights=b, k=1)[0]
+
+                self.v = torch.tensor([r, g, b])[:, None, None]
+
             else:
-                v = torch.tensor(list(self.v))[:, None, None]
+                self.v = torch.tensor(list(self.v))[:, None, None]
             
             self.set_variables = False
 
@@ -234,7 +249,7 @@ class ColorJitter:
         return img
 
 
-def get_transform_1(num_stripes, training=True, hw=(384, 128), inc=1.05):
+def get_transform_random(num_stripes, training=True, hw=(384, 128), inc=1.05):
 
     transform_list = []
 
@@ -244,7 +259,26 @@ def get_transform_1(num_stripes, training=True, hw=(384, 128), inc=1.05):
         transform_list.append(RandomHorizontalFlip())
         transform_list.append(RandomCrop(hw))
         transform_list.append(ToTensor())
-        transform_list.append(CustomRandomErasing(num_stripes))
+        transform_list.append(CustomRandomErasing(num_stripes, v='random'))
+        transform_list.append(Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]))
+    else:
+        transform_list.append(Resize(hw))
+        transform_list.append(ToTensor())
+        transform_list.append(Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]))
+    
+    return transforms.Compose(transform_list)
+
+def get_transform_random_solid(num_stripes, training=True, hw=(384, 128), inc=1.05):
+
+    transform_list = []
+
+    if training:
+        nhw = (int(hw[0]*inc), int(hw[1]*inc))
+        transform_list.append(Resize(nhw))
+        transform_list.append(RandomHorizontalFlip())
+        transform_list.append(RandomCrop(hw))
+        transform_list.append(ToTensor())
+        transform_list.append(CustomRandomErasing(num_stripes, v='random_solid'))
         transform_list.append(Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]))
     else:
         transform_list.append(Resize(hw))
@@ -254,7 +288,27 @@ def get_transform_1(num_stripes, training=True, hw=(384, 128), inc=1.05):
     return transforms.Compose(transform_list)
 
 
-def get_transform_2(num_stripes, training=True, hw=(384, 128), inc=1.05):
+def get_transform_histogram(num_stripes, training=True, hw=(384, 128), inc=1.05):
+
+    transform_list = []
+
+    if training:
+        nhw = (int(hw[0]*inc), int(hw[1]*inc))
+        transform_list.append(Resize(nhw))
+        transform_list.append(RandomHorizontalFlip())
+        transform_list.append(RandomCrop(hw))
+        transform_list.append(ToTensor())
+        transform_list.append(CustomRandomErasing(num_stripes, v='histogram'))
+        transform_list.append(Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]))
+    else:
+        transform_list.append(Resize(hw))
+        transform_list.append(ToTensor())
+        transform_list.append(Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]))
+    
+    return transforms.Compose(transform_list)
+
+
+def get_transform_cj_random(num_stripes, training=True, hw=(384, 128), inc=1.05):
 
     transform_list = []
 
@@ -265,7 +319,49 @@ def get_transform_2(num_stripes, training=True, hw=(384, 128), inc=1.05):
         transform_list.append(RandomCrop(hw))
         transform_list.append(ColorJitter(brightness=0.25, contrast=0.15, saturation=0.25, hue=0))
         transform_list.append(ToTensor())
-        transform_list.append(CustomRandomErasing(num_stripes))
+        transform_list.append(CustomRandomErasing(num_stripes, v='random'))
+        transform_list.append(Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]))
+    else:
+        transform_list.append(Resize(hw))
+        transform_list.append(ToTensor())
+        transform_list.append(Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]))
+    
+    return transforms.Compose(transform_list)
+
+
+def get_transform_cj_random_solid(num_stripes, training=True, hw=(384, 128), inc=1.05):
+
+    transform_list = []
+
+    if training:
+        nhw = (int(hw[0]*inc), int(hw[1]*inc))
+        transform_list.append(Resize(nhw))
+        transform_list.append(RandomHorizontalFlip())
+        transform_list.append(RandomCrop(hw))
+        transform_list.append(ColorJitter(brightness=0.25, contrast=0.15, saturation=0.25, hue=0))
+        transform_list.append(ToTensor())
+        transform_list.append(CustomRandomErasing(num_stripes, v='random_solid'))
+        transform_list.append(Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]))
+    else:
+        transform_list.append(Resize(hw))
+        transform_list.append(ToTensor())
+        transform_list.append(Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]))
+    
+    return transforms.Compose(transform_list)
+
+
+def get_transform_cj_histogram(num_stripes, training=True, hw=(384, 128), inc=1.05):
+
+    transform_list = []
+
+    if training:
+        nhw = (int(hw[0]*inc), int(hw[1]*inc))
+        transform_list.append(Resize(nhw))
+        transform_list.append(RandomHorizontalFlip())
+        transform_list.append(RandomCrop(hw))
+        transform_list.append(ColorJitter(brightness=0.25, contrast=0.15, saturation=0.25, hue=0))
+        transform_list.append(ToTensor())
+        transform_list.append(CustomRandomErasing(num_stripes, v='histogram'))
         transform_list.append(Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]))
     else:
         transform_list.append(Resize(hw))
@@ -277,7 +373,7 @@ def get_transform_2(num_stripes, training=True, hw=(384, 128), inc=1.05):
 
 class CustomDataset(Dataset):
 
-    def __init__(self, root, extensions, num_stripes, transform_fn=get_transform_1, training=True):
+    def __init__(self, root, extensions, num_stripes, transform_fn=get_transform_histogram, training=True):
         self.root = root
         self.training = training
         self.num_stripes = num_stripes

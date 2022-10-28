@@ -16,7 +16,7 @@ def main(dataset_name):
 
     device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 
-    n_epochs = 120
+    n_epochs = 100
     n_persons = 16
     n_pictures = 4
 
@@ -97,8 +97,8 @@ def main(dataset_name):
     bce = nn.BCEWithLogitsLoss()
 
     # optimizer = optim.SGD(model.parameters(), lr=lr)
-    optimizer = optim.Adam(model.parameters(), lr=3.5e-4)
-    scheduler = optim.lr_scheduler.StepLR(optimizer, 40, gamma=0.1)
+    optimizer = optim.Adam(model.parameters(), lr=1e-4)
+    scheduler = optim.lr_scheduler.StepLR(optimizer, 80, gamma=0.1)
 
     save_path = datetime.now().strftime(f'{dataset_name}-%y%m%d%H%M%S.pt')
 
@@ -202,35 +202,35 @@ def main_test(dataset_name, checkpoint_path):
         extensions = ['.jpg']
         num_stripes = 6
         num_classes = 751
-        transform_fn = get_transform_1
+        transform_fn = get_transform_random
     elif dataset_name == 'duke-occ':
         test_path = 'C:\\Users\\leona\\Documents\\Dataset\\Occluded-DukeMTMC-reID\\bounding_box_test'
         query_path = 'C:\\Users\\leona\\Documents\\Dataset\\Occluded-DukeMTMC-reID\\query'
         extensions = ['.jpg']
         num_stripes = 4
         num_classes = 702
-        transform_fn = get_transform_1
+        transform_fn = get_transform_random
     elif dataset_name == 'occ-reid':
         test_path = 'C:\\Users\\leona\\Documents\\Dataset\\partial_dataset\\OccludedREID\\gallery'
         query_path = 'C:\\Users\\leona\\Documents\\Dataset\\partial_dataset\\OccludedREID\\query'
         extensions = ['.jpg']
         num_stripes = 6
         num_classes = 751
-        transform_fn = get_transform_2
+        transform_fn = get_transform_cj_random
     elif dataset_name == 'part-reid':
         test_path = 'C:\\Users\\leona\\Documents\\Dataset\\partial_dataset\\Partial_REID\\whole_body_images'
         query_path = 'C:\\Users\\leona\\Documents\\Dataset\\partial_dataset\\Partial_REID\\partial_body_images'
         extensions = ['.jpg']
         num_stripes = 6
         num_classes = 751
-        transform_fn = get_transform_2
+        transform_fn = get_transform_cj_random
     elif dataset_name == 'part-ilids':
         test_path = 'C:\\Users\\leona\\Documents\\Dataset\\partial_dataset\\PartialiLIDS\\gallery'
         query_path = 'C:\\Users\\leona\\Documents\\Dataset\\partial_dataset\\PartialiLIDS\\query'
         extensions = ['.jpg']
         num_stripes = 6
         num_classes = 751
-        transform_fn = get_transform_2
+        transform_fn = get_transform_cj_random
 
     test_dataset = CustomDataset(test_path, extensions, num_stripes, transform_fn=transform_fn, training=False)
     query_dataset = CustomDataset(query_path, extensions, num_stripes, transform_fn=transform_fn, training=False)
@@ -382,7 +382,13 @@ def main_test(dataset_name, checkpoint_path):
    
 
 if __name__ == '__main__':
-    main('market_occ_random')
-    main('market_occ_random_solid')
+    # main('market_occ_random')
+    # main('market_occ_random_solid')
     main('market_occ_histogram')
+
+    # main_test('market', 'market_occ_random-221010021816.pt')
+    # main_test('occ-reid', 'market_occ_random-221010021816.pt')
+    # main_test('part-reid', 'market_occ_random-221010021816.pt')
+    # main_test('part-ilids', 'market_occ_random-221010021816.pt')
+    
 

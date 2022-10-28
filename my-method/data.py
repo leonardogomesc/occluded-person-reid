@@ -123,7 +123,7 @@ class CustomRandomErasing:
                 g = random.choices(list(range(256)), weights=g, k=1)[0]
                 b = random.choices(list(range(256)), weights=b, k=1)[0]
 
-                self.v = torch.tensor([r, g, b])[:, None, None]
+                self.v = torch.tensor([r/255, g/255, b/255])[:, None, None]
 
             else:
                 self.v = torch.tensor(list(self.v))[:, None, None]
@@ -490,7 +490,7 @@ def test():
     train_path = 'C:\\Users\\leona\\Documents\\Dataset\\Market-1501-v15.09.15\\bounding_box_train'
     extensions = ['.jpg']
 
-    dataset = CustomDataset(train_path, extensions, 6, transform_fn=get_transform_1, training=True)
+    dataset = CustomDataset(train_path, extensions, 6, transform_fn=get_transform_histogram, training=True)
 
     tensor_img, labels, original_labels, occlusion_labels = dataset[148]
 

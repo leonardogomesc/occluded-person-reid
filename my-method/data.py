@@ -124,7 +124,29 @@ class CustomRandomErasing:
                 b = random.choices(list(range(256)), weights=b, k=1)[0]
 
                 self.v = torch.tensor([r/255, g/255, b/255])[:, None, None]
+            elif self.v == 'blur':
+                factor = 1.0
 
+                # Determine size of blurring kernel based on input image
+
+                kW = int(self.w/factor)
+                kH = int(self.h/factor)
+
+                # Ensure width and height of kernel are odd
+                if kW % 2 == 0:
+                    kW -= 1
+
+                if kH % 2 == 0:
+                    kH -= 1
+                
+                if kW < 1:
+                    kW = 1
+                
+                if kH < 1:
+                    kH = 1
+
+                # Apply a Gaussian blur to the input image using our computed kernel size
+                self.v = transforms.functional.gaussian_blur(img[:, self.y:self.y+self.h, self.x:self.x+self.w], (kW, kH))
             else:
                 self.v = torch.tensor(list(self.v))[:, None, None]
             
@@ -308,6 +330,26 @@ def get_transform_histogram(num_stripes, training=True, hw=(384, 128), inc=1.05)
     return transforms.Compose(transform_list)
 
 
+def get_transform_blur(num_stripes, training=True, hw=(384, 128), inc=1.05):
+
+    transform_list = []
+
+    if training:
+        nhw = (int(hw[0]*inc), int(hw[1]*inc))
+        transform_list.append(Resize(nhw))
+        transform_list.append(RandomHorizontalFlip())
+        transform_list.append(RandomCrop(hw))
+        transform_list.append(ToTensor())
+        transform_list.append(CustomRandomErasing(num_stripes, v='blur'))
+        transform_list.append(Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]))
+    else:
+        transform_list.append(Resize(hw))
+        transform_list.append(ToTensor())
+        transform_list.append(Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]))
+    
+    return transforms.Compose(transform_list)
+
+
 def get_transform_cj_random(num_stripes, training=True, hw=(384, 128), inc=1.05):
 
     transform_list = []
@@ -362,6 +404,27 @@ def get_transform_cj_histogram(num_stripes, training=True, hw=(384, 128), inc=1.
         transform_list.append(ColorJitter(brightness=0.25, contrast=0.15, saturation=0.25, hue=0))
         transform_list.append(ToTensor())
         transform_list.append(CustomRandomErasing(num_stripes, v='histogram'))
+        transform_list.append(Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]))
+    else:
+        transform_list.append(Resize(hw))
+        transform_list.append(ToTensor())
+        transform_list.append(Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]))
+    
+    return transforms.Compose(transform_list)
+
+
+def get_transform_cj_blur(num_stripes, training=True, hw=(384, 128), inc=1.05):
+
+    transform_list = []
+
+    if training:
+        nhw = (int(hw[0]*inc), int(hw[1]*inc))
+        transform_list.append(Resize(nhw))
+        transform_list.append(RandomHorizontalFlip())
+        transform_list.append(RandomCrop(hw))
+        transform_list.append(ColorJitter(brightness=0.25, contrast=0.15, saturation=0.25, hue=0))
+        transform_list.append(ToTensor())
+        transform_list.append(CustomRandomErasing(num_stripes, v='blur'))
         transform_list.append(Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]))
     else:
         transform_list.append(Resize(hw))
@@ -490,7 +553,7 @@ def test():
     train_path = 'C:\\Users\\leona\\Documents\\Dataset\\Market-1501-v15.09.15\\bounding_box_train'
     extensions = ['.jpg']
 
-    dataset = CustomDataset(train_path, extensions, 6, transform_fn=get_transform_histogram, training=True)
+    dataset = CustomDataset(train_path, extensions, 6, transform_fn=get_transform_blur, training=True)
 
     tensor_img, labels, original_labels, occlusion_labels = dataset[148]
 

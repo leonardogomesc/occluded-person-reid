@@ -3,7 +3,7 @@ import torch.nn as nn
 import torch.optim as optim
 import time
 from utils import train
-from data import CustomDataset, BatchSampler, get_transform_random, get_transform_random_solid, get_transform_histogram, get_transform_cj_random, get_transform_cj_random_solid, get_transform_cj_histogram
+from data import CustomDataset, BatchSampler, get_transform_random, get_transform_random_solid, get_transform_histogram, get_transform_blur, get_transform_cj_random, get_transform_cj_random_solid, get_transform_cj_histogram, get_transform_cj_blur
 from torch.utils.data import DataLoader
 from models import MyModel
 from triplet import batch_hard_mine_triplet, calculate_distance_matrix
@@ -41,6 +41,13 @@ def main(dataset_name):
         lr = 0.02
         alpha = 0.9
         transform_fn = get_transform_cj_histogram
+    elif dataset_name == 'market_occ_blur':
+        train_path = 'C:\\Users\\leona\\Documents\\Dataset\\Market-1501-v15.09.15\\bounding_box_train'
+        extensions = ['.jpg']
+        num_stripes = 6
+        lr = 0.02
+        alpha = 0.9
+        transform_fn = get_transform_cj_blur
     elif dataset_name == 'market_random':
         train_path = 'C:\\Users\\leona\\Documents\\Dataset\\Market-1501-v15.09.15\\bounding_box_train'
         extensions = ['.jpg']
@@ -62,6 +69,13 @@ def main(dataset_name):
         lr = 0.02
         alpha = 0.9
         transform_fn = get_transform_histogram
+    elif dataset_name == 'market_blur':
+        train_path = 'C:\\Users\\leona\\Documents\\Dataset\\Market-1501-v15.09.15\\bounding_box_train'
+        extensions = ['.jpg']
+        num_stripes = 6
+        lr = 0.02
+        alpha = 0.9
+        transform_fn = get_transform_blur
     elif dataset_name == 'duke_random':
         train_path = 'C:\\Users\\leona\\Documents\\Dataset\\Occluded-DukeMTMC-reID\\bounding_box_train'
         extensions = ['.jpg']
@@ -83,6 +97,13 @@ def main(dataset_name):
         lr = 0.05
         alpha = 0.8
         transform_fn = get_transform_histogram
+    elif dataset_name == 'duke_blur':
+        train_path = 'C:\\Users\\leona\\Documents\\Dataset\\Occluded-DukeMTMC-reID\\bounding_box_train'
+        extensions = ['.jpg']
+        num_stripes = 4
+        lr = 0.05
+        alpha = 0.8
+        transform_fn = get_transform_blur
 
     dataset = CustomDataset(train_path, extensions, num_stripes, transform_fn=transform_fn, training=True)
     batch_sampler = BatchSampler(dataset, n_persons, n_pictures)
@@ -384,7 +405,7 @@ def main_test(dataset_name, checkpoint_path):
 if __name__ == '__main__':
     # main('market_occ_random')
     # main('market_occ_random_solid')
-    main('market_occ_histogram')
+    main('market_blur')
 
     # main_test('market', 'market_occ_random-221010021816.pt')
     # main_test('occ-reid', 'market_occ_random-221010021816.pt')

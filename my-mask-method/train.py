@@ -364,6 +364,7 @@ if __name__ == '__main__':
     main('duke_histogram')
     main('duke_blur')
     
+    
     # main_test('market', 'market_occ_random-221010021816.pt')
     # main_test('occ-reid', 'market_occ_random-221010021816.pt')
     # main_test('part-reid', 'market_occ_random-221010021816.pt')

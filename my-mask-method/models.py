@@ -4,7 +4,7 @@ import torch.nn.init as init
 import torch.nn.functional as F
 from torchvision import transforms
 
-from resnet import resnet50
+from resnet import resnet50, Bottleneck
 
 
 class MyModel(nn.Module):
@@ -23,6 +23,8 @@ class MyModel(nn.Module):
                                             nn.ReLU(inplace=True))
 
         self.global_class = nn.Linear(512, num_classes)
+
+        self.bottleneck = Bottleneck(2048, 512)
 
         self.fdb_conv = nn.Sequential(nn.Conv2d(2048, 1024, 1),
                                             nn.BatchNorm2d(1024),
@@ -58,15 +60,14 @@ class MyModel(nn.Module):
             if occlusion_mask.size() != feat.size():
                 occlusion_mask = transforms.functional.resize(occlusion_mask, feat.size()[-2:])
         
-        # TODO add bottleneck layer?
+        fdb_feat = self.bottleneck(feat)
 
-        fdb_feat = feat * occlusion_mask
+        fdb_feat = fdb_feat * occlusion_mask
 
         fdb_feat = self.maxpool(fdb_feat)
         fdb_feat = self.fdb_conv(fdb_feat)
         fdb_feat = fdb_feat.view(fdb_feat.size(0), -1)
         fdb_logits = self.fdb_class(fdb_feat)
-
 
         return global_feat, global_logits, fdb_feat, fdb_logits, rvd_logits, occlusion_mask
 

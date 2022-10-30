@@ -2,7 +2,6 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 import time
-from utils import train
 from data import CustomDataset, BatchSampler, get_transform_random, get_transform_random_solid, get_transform_histogram, get_transform_blur, get_transform_cj_random, get_transform_cj_random_solid, get_transform_cj_histogram, get_transform_cj_blur
 from torch.utils.data import DataLoader
 from models import MyModel
@@ -16,102 +15,66 @@ def main(dataset_name):
 
     device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 
-    n_epochs = 100
+    n_epochs = 160
     n_persons = 16
     n_pictures = 4
 
     if dataset_name == 'market_occ_random':
         train_path = 'C:\\Users\\leona\\Documents\\Dataset\\Market-1501-v15.09.15\\bounding_box_train'
         extensions = ['.jpg']
-        num_stripes = 6
-        lr = 0.02
-        alpha = 0.9
         transform_fn = get_transform_cj_random
     elif dataset_name == 'market_occ_random_solid':
         train_path = 'C:\\Users\\leona\\Documents\\Dataset\\Market-1501-v15.09.15\\bounding_box_train'
         extensions = ['.jpg']
-        num_stripes = 6
-        lr = 0.02
-        alpha = 0.9
         transform_fn = get_transform_cj_random_solid
     elif dataset_name == 'market_occ_histogram':
         train_path = 'C:\\Users\\leona\\Documents\\Dataset\\Market-1501-v15.09.15\\bounding_box_train'
         extensions = ['.jpg']
-        num_stripes = 6
-        lr = 0.02
-        alpha = 0.9
         transform_fn = get_transform_cj_histogram
     elif dataset_name == 'market_occ_blur':
         train_path = 'C:\\Users\\leona\\Documents\\Dataset\\Market-1501-v15.09.15\\bounding_box_train'
         extensions = ['.jpg']
-        num_stripes = 6
-        lr = 0.02
-        alpha = 0.9
         transform_fn = get_transform_cj_blur
     elif dataset_name == 'market_random':
         train_path = 'C:\\Users\\leona\\Documents\\Dataset\\Market-1501-v15.09.15\\bounding_box_train'
         extensions = ['.jpg']
-        num_stripes = 6
-        lr = 0.02
-        alpha = 0.9
         transform_fn = get_transform_random
     elif dataset_name == 'market_random_solid':
         train_path = 'C:\\Users\\leona\\Documents\\Dataset\\Market-1501-v15.09.15\\bounding_box_train'
         extensions = ['.jpg']
-        num_stripes = 6
-        lr = 0.02
-        alpha = 0.9
         transform_fn = get_transform_random_solid
     elif dataset_name == 'market_histogram':
         train_path = 'C:\\Users\\leona\\Documents\\Dataset\\Market-1501-v15.09.15\\bounding_box_train'
         extensions = ['.jpg']
-        num_stripes = 6
-        lr = 0.02
-        alpha = 0.9
         transform_fn = get_transform_histogram
     elif dataset_name == 'market_blur':
         train_path = 'C:\\Users\\leona\\Documents\\Dataset\\Market-1501-v15.09.15\\bounding_box_train'
         extensions = ['.jpg']
-        num_stripes = 6
-        lr = 0.02
-        alpha = 0.9
         transform_fn = get_transform_blur
     elif dataset_name == 'duke_random':
         train_path = 'C:\\Users\\leona\\Documents\\Dataset\\Occluded-DukeMTMC-reID\\bounding_box_train'
         extensions = ['.jpg']
-        num_stripes = 4
-        lr = 0.05
-        alpha = 0.8
         transform_fn = get_transform_random
     elif dataset_name == 'duke_random_solid':
         train_path = 'C:\\Users\\leona\\Documents\\Dataset\\Occluded-DukeMTMC-reID\\bounding_box_train'
         extensions = ['.jpg']
-        num_stripes = 4
-        lr = 0.05
-        alpha = 0.8
         transform_fn = get_transform_random_solid
     elif dataset_name == 'duke_histogram':
         train_path = 'C:\\Users\\leona\\Documents\\Dataset\\Occluded-DukeMTMC-reID\\bounding_box_train'
         extensions = ['.jpg']
-        num_stripes = 4
-        lr = 0.05
-        alpha = 0.8
         transform_fn = get_transform_histogram
     elif dataset_name == 'duke_blur':
         train_path = 'C:\\Users\\leona\\Documents\\Dataset\\Occluded-DukeMTMC-reID\\bounding_box_train'
         extensions = ['.jpg']
-        num_stripes = 4
-        lr = 0.05
-        alpha = 0.8
         transform_fn = get_transform_blur
 
-    dataset = CustomDataset(train_path, extensions, num_stripes, transform_fn=transform_fn, training=True)
+    dataset = CustomDataset(train_path, extensions, transform_fn=transform_fn, training=True)
     batch_sampler = BatchSampler(dataset, n_persons, n_pictures)
     train_loader = DataLoader(dataset, batch_sampler=batch_sampler, num_workers=4)
 
     num_classes = dataset.get_num_classes()
 
-    model = MyModel(num_classes, num_stripes=num_stripes)
+    model = MyModel(num_classes)
     model = model.to(device)
 
     ce = nn.CrossEntropyLoss()
@@ -119,7 +82,7 @@ def main(dataset_name):
 
     # optimizer = optim.SGD(model.parameters(), lr=lr)
     optimizer = optim.Adam(model.parameters(), lr=1e-4)
-    scheduler = optim.lr_scheduler.StepLR(optimizer, 80, gamma=0.1)
+    scheduler = optim.lr_scheduler.StepLR(optimizer, 100, gamma=0.1)
 
     save_path = datetime.now().strftime(f'{dataset_name}-%y%m%d%H%M%S.pt')
 
@@ -140,42 +103,30 @@ def main(dataset_name):
         model.train()
 
         for batch_idx, data in enumerate(train_loader):
-            img, person_labels, person_labels_original, occlusion_labels = data
+            img, person_labels, person_labels_original, occlusion_mask = data
 
             # move to GPU
             img = img.to(device)
             person_labels = person_labels.to(device)
-            occlusion_labels = occlusion_labels.to(device)
+            occlusion_mask = occlusion_mask.to(device)
 
-            global_feat, global_logits, local_feat_list, local_logits_list, rvd_logits_list = model(img)
+            global_feat, global_logits, fdb_feat, fdb_logits, rvd_logits, occlusion_mask = model(img, occlusion_mask)
+
+            # global loss
 
             gid_loss = ce(global_logits, person_labels)
+            gtri_loss = batch_hard_mine_triplet(torch.cdist(global_feat, global_feat, p=2), person_labels)
 
-            distance_matrix = calculate_distance_matrix(occlusion_labels, 
-                                                        occlusion_labels, 
-                                                        local_feat_list, 
-                                                        local_feat_list, 
-                                                        global_feat, 
-                                                        global_feat)
+            # feature dropping branch loss
 
+            fdbid_loss = ce(fdb_logits, person_labels)
+            fdbtri_loss = batch_hard_mine_triplet(torch.cdist(fdb_feat, fdb_feat, p=2), person_labels)
 
-            gtri_loss = batch_hard_mine_triplet(distance_matrix, person_labels)
+            # region visibility discriminator loss
 
-            pid_loss = 0
-            ptri_loss = 0
-            rvd_loss = 0
+            rvd_loss = bce(rvd_logits, occlusion_mask)
 
-            for stripe in range(num_stripes):
-                pid_loss += ce(local_logits_list[stripe], person_labels)
-                ptri_loss += batch_hard_mine_triplet(torch.cdist(local_feat_list[stripe], local_feat_list[stripe], p=2), person_labels)
-
-                rvd_loss += bce(rvd_logits_list[stripe], occlusion_labels[:, stripe].unsqueeze(1).float())
-
-            pid_loss /= num_stripes
-            ptri_loss /= num_stripes
-            rvd_loss /= num_stripes
-
-            loss = ((1 - alpha) * gid_loss) + (alpha * pid_loss) + rvd_loss + ptri_loss + gtri_loss
+            loss = gid_loss + gtri_loss + fdbid_loss + fdbtri_loss + rvd_loss
 
             optimizer.zero_grad()
             loss.backward()
@@ -403,10 +354,16 @@ def main_test(dataset_name, checkpoint_path):
    
 
 if __name__ == '__main__':
-    # main('market_occ_random')
-    # main('market_occ_random_solid')
+    main('market_random')
+    main('market_random_solid')
+    main('market_histogram')
     main('market_blur')
 
+    main('duke_random')
+    main('duke_random_solid')
+    main('duke_histogram')
+    main('duke_blur')
+    
     # main_test('market', 'market_occ_random-221010021816.pt')
     # main_test('occ-reid', 'market_occ_random-221010021816.pt')
     # main_test('part-reid', 'market_occ_random-221010021816.pt')

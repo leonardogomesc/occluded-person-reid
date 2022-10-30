@@ -2,93 +2,73 @@ import torch
 import torch.nn as nn
 import torch.nn.init as init
 import torch.nn.functional as F
+from torchvision import transforms
 
 from resnet import resnet50
 
 
 class MyModel(nn.Module):
-    def __init__(self, num_classes, last_conv_stride=1, last_conv_dilation=1, num_stripes=6, local_conv_out_channels=256):
+    def __init__(self, num_classes, last_conv_stride=1, last_conv_dilation=1):
         super(MyModel, self).__init__()
 
         self.base = resnet50(pretrained=True, last_conv_stride=last_conv_stride, last_conv_dilation=last_conv_dilation)
+
+        self.rvd_conv = nn.Sequential(nn.Conv2d(2048, 256, 1),
+                                        nn.BatchNorm2d(256),
+                                        nn.ReLU(inplace=True),
+                                        nn.Conv2d(256, 1, 1))
+
+        self.global_conv = nn.Sequential(nn.Conv2d(2048, 512, 1),
+                                            nn.BatchNorm2d(512),
+                                            nn.ReLU(inplace=True))
+
+        self.global_class = nn.Linear(512, num_classes)
+
+        self.fdb_conv = nn.Sequential(nn.Conv2d(2048, 1024, 1),
+                                            nn.BatchNorm2d(1024),
+                                            nn.ReLU(inplace=True))
         
-        self.num_stripes = num_stripes
+        self.fdb_class = nn.Linear(1024, num_classes)
 
-        self.local_conv_list = nn.ModuleList()
-
-        for _ in range(num_stripes):
-            self.local_conv_list.append(nn.Sequential(nn.Conv2d(2048, local_conv_out_channels, 1),
-                                                        nn.BatchNorm2d(local_conv_out_channels),
-                                                        nn.ReLU(inplace=True)))
-
-        self.fc_list = nn.ModuleList()
-
-        for _ in range(num_stripes):
-            fc = nn.Linear(local_conv_out_channels, num_classes)
-            init.normal_(fc.weight, std=0.001)
-            init.constant_(fc.bias, 0)
-            self.fc_list.append(fc)
-
-        self.rvd_conv_list = nn.ModuleList()
-
-        for _ in range(num_stripes):
-            self.rvd_conv_list.append(nn.Sequential(nn.Conv2d(2048, local_conv_out_channels, 1),
-                                                        nn.BatchNorm2d(local_conv_out_channels),
-                                                        nn.ReLU(inplace=True)))
-
-        self.rvd_fc_list = nn.ModuleList()
-
-        for _ in range(num_stripes):
-            fc = nn.Linear(local_conv_out_channels, 1)
-            init.normal_(fc.weight, std=0.001)
-            init.constant_(fc.bias, 0)
-            self.rvd_fc_list.append(fc)
-        
         self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
-
-        self.global_fc = nn.Linear(2048, num_classes)
-        init.normal_(self.global_fc.weight, std=0.001)
-        init.constant_(self.global_fc.bias, 0)
+        self.maxpool = nn.AdaptiveMaxPool2d((1, 1))
 
 
-    def forward(self, x):
+    def forward(self, x, occlusion_mask=None):
         # shape [N, C, H, W]
         feat = self.base(x)
 
-        assert feat.size(2) % self.num_stripes == 0
-
-        stripe_h = int(feat.size(2) / self.num_stripes)
-
-        local_feat_list = []
-        local_logits_list = []
-
-        rvd_logits_list = []
-
-        for i in range(self.num_stripes):
-            # shape [N, C, 1, 1]
-            local_feat = F.avg_pool2d(feat[:, :, i * stripe_h: (i + 1) * stripe_h, :], (stripe_h, feat.size(-1)))
-
-            # shape [N, c, 1, 1]
-            local_conv_feat = self.local_conv_list[i](local_feat)
-            # shape [N, c]
-            local_conv_feat = local_conv_feat.view(local_conv_feat.size(0), -1)
-            local_feat_list.append(local_conv_feat)
-            local_logits_list.append(self.fc_list[i](local_conv_feat))
-
-            # rvd
-            # shape [N, c, 1, 1]
-            rvd_conv_feat = self.rvd_conv_list[i](local_feat)
-            # shape [N, c]
-            rvd_conv_feat = rvd_conv_feat.view(rvd_conv_feat.size(0), -1)
-            # shape [N, 1]
-            rvd_logits_list.append(self.rvd_fc_list[i](rvd_conv_feat))
-        
-
+        # global branch
         global_feat = self.avgpool(feat)
+        global_feat = self.global_conv(global_feat)
         global_feat = global_feat.view(global_feat.size(0), -1)
-        global_logits = self.global_fc(global_feat)
+        global_logits = self.global_class(global_feat)
 
-        return global_feat, global_logits, local_feat_list, local_logits_list, rvd_logits_list
+        # compute occlusion mask (region visibility discriminator)
+        rvd_logits = self.rvd_conv(feat)
+
+        # feature dropping branch
+
+        # if occlusion mask is None we apply the mask calculated by 
+        # the model, otherwise we use the provided mask (ground truth)
+        if occlusion_mask is None:
+            occlusion_mask = rvd_logits.detach()
+            occlusion_mask = (torch.sigmoid(occlusion_mask) > 0.5).float()
+        else:
+            if occlusion_mask.size() != feat.size():
+                occlusion_mask = transforms.functional.resize(occlusion_mask, feat.size()[-2:])
+        
+        # TODO add bottleneck layer?
+
+        fdb_feat = feat * occlusion_mask
+
+        fdb_feat = self.maxpool(fdb_feat)
+        fdb_feat = self.fdb_conv(fdb_feat)
+        fdb_feat = fdb_feat.view(fdb_feat.size(0), -1)
+        fdb_logits = self.fdb_class(fdb_feat)
+
+
+        return global_feat, global_logits, fdb_feat, fdb_logits, rvd_logits, occlusion_mask
 
 
 def main():
@@ -105,18 +85,18 @@ def main():
     x = torch.randn(64, 3, 384, 128)
     x = x.to(device)
 
-    global_feat, global_logits, local_feat_list, local_logits_list, rvd_logits_list = model(x)
+    occlusion_mask = torch.randn(64, 1, 384, 128)
+    occlusion_mask = occlusion_mask.to(device)
+
+    global_feat, global_logits, fdb_feat, fdb_logits, rvd_logits, occlusion_mask = model(x, occlusion_mask)
 
     print(global_feat.size())
     print(global_logits.size())
-    print(len(local_feat_list))
-    print(local_feat_list[0].size())
-    print(len(local_logits_list))
-    print(local_logits_list[0].size())
-    print(len(rvd_logits_list))
-    print(rvd_logits_list[0].size())
-
-
+    print(fdb_feat.size())
+    print(fdb_logits.size())
+    print(rvd_logits.size())
+    print(occlusion_mask.size())
+    
 
 if __name__ == '__main__':
     main()

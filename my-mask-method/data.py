@@ -81,8 +81,7 @@ class RandomErasing:
         return img
 
 class CustomRandomErasing:
-    def __init__(self, num_stripes, p=1.0, height_range=(0.1, 0.4), width_range=(0.7, 0.9), v='histogram', percentage_covered=0.6):
-        self.num_stripes = num_stripes
+    def __init__(self, p=1.0, height_range=(0.1, 0.4), width_range=(0.7, 0.9), v='histogram', percentage_covered=0.6):
         self.set_variables = True
         self.apply_transform = random.random() < p
         self.height_range = height_range
@@ -91,10 +90,9 @@ class CustomRandomErasing:
         self.percentage_covered = percentage_covered
     
     def __call__(self, img):
-        occlusion_labels = [1] * self.num_stripes
 
         if not self.apply_transform:
-            return img, torch.tensor(occlusion_labels)
+            return img, torch.ones((1, img.size(1), img.size(2)))
         
         if self.set_variables:
 
@@ -155,54 +153,10 @@ class CustomRandomErasing:
         
         img[:, self.y:self.y+self.h, self.x:self.x+self.w] = self.v
 
-        stripe_h = img.size(1) / self.num_stripes
+        occlusion_mask = torch.ones((1, img.size(1), img.size(2)))
+        occlusion_mask[:, self.y:self.y+self.h, self.x:self.x+self.w] = 0.0
 
-        # debug
-
-        '''for i in range(self.num_stripes-1):
-            img[:, (i + 1) * int(stripe_h), :] = torch.tensor([1.0, 0, 0])[:, None]'''
-
-        # calculate the stripes that are occluded
-
-        first_stripe = math.floor(self.y / stripe_h)
-
-        last_stripe = math.floor((self.y + self.h) / stripe_h)
-
-        # check if first_stripe is included
-
-        first_stripe_extra = stripe_h - (self.y % stripe_h)
-
-        if first_stripe_extra > self.h:
-            first_stripe_extra = self.h
-        
-        if first_stripe_extra / stripe_h < self.percentage_covered:
-            first_stripe += 1
-        
-
-        # check if last stripe is included
-
-        last_stripe_extra = (self.y + self.h) % stripe_h
-
-        if last_stripe_extra > self.h:
-            last_stripe_extra = self.h
-        
-        if last_stripe_extra / stripe_h < self.percentage_covered:
-            last_stripe -= 1
-
-        
-        # erase is too small
-
-        if first_stripe > last_stripe:
-            return img, torch.tensor(occlusion_labels)
-        
-
-        n_stripes = last_stripe - first_stripe + 1
-
-        for i in range(n_stripes):
-            occlusion_labels[first_stripe + i] = 0
-
-
-        return img, torch.tensor(occlusion_labels)
+        return img, occlusion_mask
 
 
 class ToTensor:
@@ -271,7 +225,7 @@ class ColorJitter:
         return img
 
 
-def get_transform_random(num_stripes, training=True, hw=(384, 128), inc=1.05):
+def get_transform_random(training=True, hw=(384, 128), inc=1.05):
 
     transform_list = []
 
@@ -281,7 +235,7 @@ def get_transform_random(num_stripes, training=True, hw=(384, 128), inc=1.05):
         transform_list.append(RandomHorizontalFlip())
         transform_list.append(RandomCrop(hw))
         transform_list.append(ToTensor())
-        transform_list.append(CustomRandomErasing(num_stripes, v='random'))
+        transform_list.append(CustomRandomErasing(v='random'))
         transform_list.append(Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]))
     else:
         transform_list.append(Resize(hw))
@@ -290,7 +244,7 @@ def get_transform_random(num_stripes, training=True, hw=(384, 128), inc=1.05):
     
     return transforms.Compose(transform_list)
 
-def get_transform_random_solid(num_stripes, training=True, hw=(384, 128), inc=1.05):
+def get_transform_random_solid(training=True, hw=(384, 128), inc=1.05):
 
     transform_list = []
 
@@ -300,7 +254,7 @@ def get_transform_random_solid(num_stripes, training=True, hw=(384, 128), inc=1.
         transform_list.append(RandomHorizontalFlip())
         transform_list.append(RandomCrop(hw))
         transform_list.append(ToTensor())
-        transform_list.append(CustomRandomErasing(num_stripes, v='random_solid'))
+        transform_list.append(CustomRandomErasing(v='random_solid'))
         transform_list.append(Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]))
     else:
         transform_list.append(Resize(hw))
@@ -310,7 +264,7 @@ def get_transform_random_solid(num_stripes, training=True, hw=(384, 128), inc=1.
     return transforms.Compose(transform_list)
 
 
-def get_transform_histogram(num_stripes, training=True, hw=(384, 128), inc=1.05):
+def get_transform_histogram(training=True, hw=(384, 128), inc=1.05):
 
     transform_list = []
 
@@ -320,7 +274,7 @@ def get_transform_histogram(num_stripes, training=True, hw=(384, 128), inc=1.05)
         transform_list.append(RandomHorizontalFlip())
         transform_list.append(RandomCrop(hw))
         transform_list.append(ToTensor())
-        transform_list.append(CustomRandomErasing(num_stripes, v='histogram'))
+        transform_list.append(CustomRandomErasing(v='histogram'))
         transform_list.append(Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]))
     else:
         transform_list.append(Resize(hw))
@@ -330,7 +284,7 @@ def get_transform_histogram(num_stripes, training=True, hw=(384, 128), inc=1.05)
     return transforms.Compose(transform_list)
 
 
-def get_transform_blur(num_stripes, training=True, hw=(384, 128), inc=1.05):
+def get_transform_blur(training=True, hw=(384, 128), inc=1.05):
 
     transform_list = []
 
@@ -340,7 +294,7 @@ def get_transform_blur(num_stripes, training=True, hw=(384, 128), inc=1.05):
         transform_list.append(RandomHorizontalFlip())
         transform_list.append(RandomCrop(hw))
         transform_list.append(ToTensor())
-        transform_list.append(CustomRandomErasing(num_stripes, v='blur'))
+        transform_list.append(CustomRandomErasing(v='blur'))
         transform_list.append(Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]))
     else:
         transform_list.append(Resize(hw))
@@ -350,7 +304,7 @@ def get_transform_blur(num_stripes, training=True, hw=(384, 128), inc=1.05):
     return transforms.Compose(transform_list)
 
 
-def get_transform_cj_random(num_stripes, training=True, hw=(384, 128), inc=1.05):
+def get_transform_cj_random(training=True, hw=(384, 128), inc=1.05):
 
     transform_list = []
 
@@ -361,7 +315,7 @@ def get_transform_cj_random(num_stripes, training=True, hw=(384, 128), inc=1.05)
         transform_list.append(RandomCrop(hw))
         transform_list.append(ColorJitter(brightness=0.25, contrast=0.15, saturation=0.25, hue=0))
         transform_list.append(ToTensor())
-        transform_list.append(CustomRandomErasing(num_stripes, v='random'))
+        transform_list.append(CustomRandomErasing(v='random'))
         transform_list.append(Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]))
     else:
         transform_list.append(Resize(hw))
@@ -371,7 +325,7 @@ def get_transform_cj_random(num_stripes, training=True, hw=(384, 128), inc=1.05)
     return transforms.Compose(transform_list)
 
 
-def get_transform_cj_random_solid(num_stripes, training=True, hw=(384, 128), inc=1.05):
+def get_transform_cj_random_solid(training=True, hw=(384, 128), inc=1.05):
 
     transform_list = []
 
@@ -382,7 +336,7 @@ def get_transform_cj_random_solid(num_stripes, training=True, hw=(384, 128), inc
         transform_list.append(RandomCrop(hw))
         transform_list.append(ColorJitter(brightness=0.25, contrast=0.15, saturation=0.25, hue=0))
         transform_list.append(ToTensor())
-        transform_list.append(CustomRandomErasing(num_stripes, v='random_solid'))
+        transform_list.append(CustomRandomErasing(v='random_solid'))
         transform_list.append(Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]))
     else:
         transform_list.append(Resize(hw))
@@ -392,7 +346,7 @@ def get_transform_cj_random_solid(num_stripes, training=True, hw=(384, 128), inc
     return transforms.Compose(transform_list)
 
 
-def get_transform_cj_histogram(num_stripes, training=True, hw=(384, 128), inc=1.05):
+def get_transform_cj_histogram(training=True, hw=(384, 128), inc=1.05):
 
     transform_list = []
 
@@ -403,7 +357,7 @@ def get_transform_cj_histogram(num_stripes, training=True, hw=(384, 128), inc=1.
         transform_list.append(RandomCrop(hw))
         transform_list.append(ColorJitter(brightness=0.25, contrast=0.15, saturation=0.25, hue=0))
         transform_list.append(ToTensor())
-        transform_list.append(CustomRandomErasing(num_stripes, v='histogram'))
+        transform_list.append(CustomRandomErasing(v='histogram'))
         transform_list.append(Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]))
     else:
         transform_list.append(Resize(hw))
@@ -413,7 +367,7 @@ def get_transform_cj_histogram(num_stripes, training=True, hw=(384, 128), inc=1.
     return transforms.Compose(transform_list)
 
 
-def get_transform_cj_blur(num_stripes, training=True, hw=(384, 128), inc=1.05):
+def get_transform_cj_blur(training=True, hw=(384, 128), inc=1.05):
 
     transform_list = []
 
@@ -424,7 +378,7 @@ def get_transform_cj_blur(num_stripes, training=True, hw=(384, 128), inc=1.05):
         transform_list.append(RandomCrop(hw))
         transform_list.append(ColorJitter(brightness=0.25, contrast=0.15, saturation=0.25, hue=0))
         transform_list.append(ToTensor())
-        transform_list.append(CustomRandomErasing(num_stripes, v='blur'))
+        transform_list.append(CustomRandomErasing(v='blur'))
         transform_list.append(Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]))
     else:
         transform_list.append(Resize(hw))
@@ -436,10 +390,9 @@ def get_transform_cj_blur(num_stripes, training=True, hw=(384, 128), inc=1.05):
 
 class CustomDataset(Dataset):
 
-    def __init__(self, root, extensions, num_stripes, transform_fn=get_transform_histogram, training=True):
+    def __init__(self, root, extensions, transform_fn=get_transform_histogram, training=True):
         self.root = root
         self.training = training
-        self.num_stripes = num_stripes
         self.transform_fn = transform_fn
 
         self.individuals = {}
@@ -476,15 +429,15 @@ class CustomDataset(Dataset):
         return len(self.files)
 
     def __getitem__(self, idx):
-        transform = self.transform_fn(self.num_stripes, training=self.training)
+        transform = self.transform_fn(training=self.training)
 
         img = self.files[idx]
         path = os.path.join(self.root, img)
         pil_img = Image.open(path)
 
-        tensor_img, occlusion_labels = transform(pil_img)
+        tensor_img, occlusion_mask = transform(pil_img)
 
-        return tensor_img, self.labels[idx], self.original_labels[idx], occlusion_labels
+        return tensor_img, self.labels[idx], self.original_labels[idx], occlusion_mask
 
     def get_num_classes(self):
         return len(list(self.individuals.keys()))
@@ -520,47 +473,24 @@ class BatchSampler(Sampler):
         return self.len
 
 
-def get_data_loader(data_path, extensions, transform, n_persons, n_pictures):
-
-    dataset = CustomDataset(data_path, extensions, transform)
-
-    batch_sampler = BatchSampler(dataset, n_persons, n_pictures)
-
-    data_loader = DataLoader(dataset, batch_sampler=batch_sampler, num_workers=4)
-
-    return data_loader, dataset.get_num_classes()
-
-
-def get_mask_data_loader(data_path, extensions, transform, batch_size):
-
-    dataset = CustomDataset(data_path, extensions, transform)
-
-    data_loader = DataLoader(dataset, batch_size=batch_size, shuffle=True, num_workers=4)
-
-    return data_loader
-
-
-def get_test_data_loader(data_path, extensions, transform, batch_size):
-
-    dataset = CustomDataset(data_path, extensions, transform)
-
-    data_loader = DataLoader(dataset, batch_size=batch_size, shuffle=False, num_workers=4)
-
-    return data_loader
-
-
 def test():
     train_path = 'C:\\Users\\leona\\Documents\\Dataset\\Market-1501-v15.09.15\\bounding_box_train'
     extensions = ['.jpg']
 
-    dataset = CustomDataset(train_path, extensions, 6, transform_fn=get_transform_blur, training=True)
+    dataset = CustomDataset(train_path, extensions, transform_fn=get_transform_blur, training=True)
 
-    tensor_img, labels, original_labels, occlusion_labels = dataset[148]
+    tensor_img, labels, original_labels, occlusion_mask = dataset[148]
 
     pil_img = transforms.ToPILImage()(tensor_img)
     pil_img.show()
 
-    print((tensor_img, labels, original_labels, occlusion_labels))
+    pil_img = transforms.ToPILImage()(occlusion_mask)
+    pil_img.show()
+
+    pil_img = transforms.ToPILImage()(transforms.functional.resize(occlusion_mask, (24, 8)))
+    pil_img.show()
+
+    print((tensor_img, labels, original_labels, occlusion_mask))
 
 
 if __name__ == '__main__':

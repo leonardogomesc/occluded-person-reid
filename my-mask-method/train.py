@@ -1,3 +1,4 @@
+from tkinter import E
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -172,125 +173,101 @@ def main_test(dataset_name, checkpoint_path):
         test_path = 'C:\\Users\\leona\\Documents\\Dataset\\Market-1501-v15.09.15\\bounding_box_test'
         query_path = 'C:\\Users\\leona\\Documents\\Dataset\\Market-1501-v15.09.15\\query'
         extensions = ['.jpg']
-        num_stripes = 6
         num_classes = 751
         transform_fn = get_transform_random
     elif dataset_name == 'duke-occ':
         test_path = 'C:\\Users\\leona\\Documents\\Dataset\\Occluded-DukeMTMC-reID\\bounding_box_test'
         query_path = 'C:\\Users\\leona\\Documents\\Dataset\\Occluded-DukeMTMC-reID\\query'
         extensions = ['.jpg']
-        num_stripes = 4
         num_classes = 702
         transform_fn = get_transform_random
     elif dataset_name == 'occ-reid':
         test_path = 'C:\\Users\\leona\\Documents\\Dataset\\partial_dataset\\OccludedREID\\gallery'
         query_path = 'C:\\Users\\leona\\Documents\\Dataset\\partial_dataset\\OccludedREID\\query'
         extensions = ['.jpg']
-        num_stripes = 6
         num_classes = 751
         transform_fn = get_transform_cj_random
     elif dataset_name == 'part-reid':
         test_path = 'C:\\Users\\leona\\Documents\\Dataset\\partial_dataset\\Partial_REID\\whole_body_images'
         query_path = 'C:\\Users\\leona\\Documents\\Dataset\\partial_dataset\\Partial_REID\\partial_body_images'
         extensions = ['.jpg']
-        num_stripes = 6
         num_classes = 751
         transform_fn = get_transform_cj_random
     elif dataset_name == 'part-ilids':
         test_path = 'C:\\Users\\leona\\Documents\\Dataset\\partial_dataset\\PartialiLIDS\\gallery'
         query_path = 'C:\\Users\\leona\\Documents\\Dataset\\partial_dataset\\PartialiLIDS\\query'
         extensions = ['.jpg']
-        num_stripes = 6
         num_classes = 751
         transform_fn = get_transform_cj_random
 
-    test_dataset = CustomDataset(test_path, extensions, num_stripes, transform_fn=transform_fn, training=False)
-    query_dataset = CustomDataset(query_path, extensions, num_stripes, transform_fn=transform_fn, training=False)
+    test_dataset = CustomDataset(test_path, extensions, transform_fn=transform_fn, training=False)
+    query_dataset = CustomDataset(query_path, extensions, transform_fn=transform_fn, training=False)
 
     test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=True, num_workers=4)
     test_loader_query = DataLoader(query_dataset, batch_size=batch_size, shuffle=True, num_workers=4)
 
-    model = MyModel(num_classes, num_stripes=num_stripes)
+    model = MyModel(num_classes)
     model = model.to(device)
 
     checkpoint = torch.load(checkpoint_path)
     model.load_state_dict(checkpoint['model'])
+
+    print(checkpoint['epoch'])
     
     print('Starting Test')
     print(dataset_name)
+    print(checkpoint_path)
 
-    test_local_feat_list = []
-    test_global_feat = []
-    test_occlusion_labels = []
+    test_feat_list = []
     test_labels = []
 
-    query_local_feat_list = []
-    query_global_feat = []
-    query_occlusion_labels = []
+    query_feat_list = []
     query_labels = []
 
     with torch.no_grad():
         model.eval()
 
         for i, data in enumerate(test_loader):
-            img, person_labels, person_labels_original, occlusion_labels = data
+            img, person_labels, person_labels_original, occlusion_mask = data
 
             # forward
             img = img.to(device)
 
-            global_feat, global_logits, local_feat_list, local_logits_list, rvd_logits_list = model(img)
+            global_feat, global_logits, fdb_feat, fdb_logits, rvd_logits, occlusion_mask = model(img)
 
-            local_feat_list = torch.stack(local_feat_list, dim=0).cpu()
-            global_feat = global_feat.cpu()
+            feat = torch.cat([global_feat, fdb_feat], dim=1)
+            feat = feat.cpu()
 
-            rvd_logits_list = torch.stack([(torch.sigmoid(rvdl.view(-1)) > 0.5).int() for rvdl in rvd_logits_list], dim=1)
-            rvd_logits_list = rvd_logits_list.cpu()
-
-            person_labels_original = person_labels_original.cpu()
-
-            test_local_feat_list.append(local_feat_list)
-            test_global_feat.append(global_feat)
-            test_occlusion_labels.append(rvd_logits_list)
+            test_feat_list.append(feat)
             test_labels.append(person_labels_original)
 
         for i, data in enumerate(test_loader_query):
-            img, person_labels, person_labels_original, occlusion_labels = data
+            img, person_labels, person_labels_original, occlusion_mask = data
 
             # forward
             img = img.to(device)
 
-            global_feat, global_logits, local_feat_list, local_logits_list, rvd_logits_list = model(img)
+            global_feat, global_logits, fdb_feat, fdb_logits, rvd_logits, occlusion_mask = model(img)
 
-            local_feat_list = torch.stack(local_feat_list, dim=0).cpu()
-            global_feat = global_feat.cpu()
+            feat = torch.cat([global_feat, fdb_feat], dim=1)
+            feat = feat.cpu()
 
-            rvd_logits_list = torch.stack([(torch.sigmoid(rvdl.view(-1)) > 0.5).int() for rvdl in rvd_logits_list], dim=1)
-            rvd_logits_list = rvd_logits_list.cpu()
-
-            person_labels_original = person_labels_original.cpu()
-
-            query_local_feat_list.append(local_feat_list)
-            query_global_feat.append(global_feat)
-            query_occlusion_labels.append(rvd_logits_list)
+            query_feat_list.append(feat)
             query_labels.append(person_labels_original)
 
 
-        test_local_feat_list = torch.cat(test_local_feat_list, dim=1)
-        test_global_feat = torch.cat(test_global_feat, dim=0)
-        test_occlusion_labels = torch.cat(test_occlusion_labels, dim=0)
+        test_feat_list = torch.cat(test_feat_list, dim=0)
         test_labels = torch.cat(test_labels, dim=0)
 
-        query_local_feat_list = torch.cat(query_local_feat_list, dim=1)
-        query_global_feat = torch.cat(query_global_feat, dim=0)
-        query_occlusion_labels = torch.cat(query_occlusion_labels, dim=0)
+        query_feat_list = torch.cat(query_feat_list, dim=0)
         query_labels = torch.cat(query_labels, dim=0)
 
-        distance_matrix = calculate_distance_matrix(query_occlusion_labels, 
-                                                    test_occlusion_labels, 
-                                                    query_local_feat_list, 
-                                                    test_local_feat_list, 
-                                                    query_global_feat, 
-                                                    test_global_feat)
+        print(test_feat_list.size())
+        print(test_labels.size())
+        print(query_feat_list.size())
+        print(query_labels.size())
+
+        distance_matrix = torch.cdist(query_feat_list, test_feat_list, p=2)
 
         sorted_matrix = torch.argsort(distance_matrix, dim=1)
 
@@ -354,7 +331,7 @@ def main_test(dataset_name, checkpoint_path):
    
 
 if __name__ == '__main__':
-    main('market_random')
+    '''main('market_random')
     main('market_random_solid')
     main('market_histogram')
     main('market_blur')
@@ -362,12 +339,15 @@ if __name__ == '__main__':
     main('duke_random')
     main('duke_random_solid')
     main('duke_histogram')
-    main('duke_blur')
+    main('duke_blur')'''
     
     
-    # main_test('market', 'market_occ_random-221010021816.pt')
+    main_test('duke-occ', 'duke_random-221031030044.pt')
+    # main_test('duke-occ', 'market_random_solid-221030104424.pt')
+    # main_test('duke-occ', 'market_histogram-221030144042.pt')
+    # main_test('duke-occ', 'market_blur-221030192750.pt')
+
     # main_test('occ-reid', 'market_occ_random-221010021816.pt')
     # main_test('part-reid', 'market_occ_random-221010021816.pt')
     # main_test('part-ilids', 'market_occ_random-221010021816.pt')
     
-

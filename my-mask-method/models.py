@@ -56,6 +56,7 @@ class MyModel(nn.Module):
         if occlusion_mask is None:
             occlusion_mask = rvd_logits.detach()
             occlusion_mask = (torch.sigmoid(occlusion_mask) > 0.5).float()
+            # occlusion_mask = torch.ones_like(rvd_logits)
         else:
             if occlusion_mask.size() != feat.size():
                 occlusion_mask = transforms.functional.resize(occlusion_mask, feat.size()[-2:])

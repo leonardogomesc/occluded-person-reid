@@ -134,7 +134,7 @@ if __name__=='__main__':
 
     exit()
 
-    fig, ax = plt.subplots()
+    '''fig, ax = plt.subplots()
     ax.set_aspect("equal")
 
     lin = 0.1
@@ -151,5 +151,5 @@ if __name__=='__main__':
             plt.plot([point[0], p[0]], [point[1], p[1]], color="limegreen")
 
 
-    plt.show()
+    plt.show()'''
 

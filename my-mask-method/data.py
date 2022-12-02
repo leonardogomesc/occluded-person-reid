@@ -190,6 +190,106 @@ class RandomShapeErasing:
         return img, self.occlusion_mask
 
 
+class RandomObject:
+    def __init__(self, p=1.0, 
+                        cars='C:\\Users\\leona\\Documents\\GitHub\\occluded-person-reid\\my-mask-method\\objs\\cars', 
+                        road_signs='C:\\Users\\leona\\Documents\\GitHub\\occluded-person-reid\\my-mask-method\\objs\\road_signs'):
+        self.set_variables = True
+        self.apply_transform = random.random() < p
+        self.cars = [os.path.join(cars, image) for image in os.listdir(cars)]
+        self.road_signs = [os.path.join(road_signs, image) for image in os.listdir(road_signs)]
+    
+    def __call__(self, img):
+
+        if not self.apply_transform:
+            return img, torch.ones((1, img.size(1), img.size(2)))
+        
+        if self.set_variables:
+            img_c, img_h, img_w = img.shape[-3], img.shape[-2], img.shape[-1]
+
+            obj = random.choice(list(range(2)))
+
+            if obj == 0:
+                # cars
+                height_ratio_range = (0.6, 0.7)
+                visible_height_range = (0.7, 1.0)
+                occupied_width = 0.2
+
+                self.occlusion = Image.open(random.choice(self.cars))
+                self.occlusion = transforms.functional.to_tensor(self.occlusion)
+
+                if self.occlusion.size(0) != 4:
+                    print('Images need to be RGBA')
+                    return img, torch.ones((1, img.size(1), img.size(2)))
+
+                # 0 transparent
+                # 1 visible
+
+                h = random.randint(int(img_h * height_ratio_range[0]), int(img_h * height_ratio_range[1]))
+                w = int(h * (self.occlusion.size(2) / self.occlusion.size(1)))
+
+                self.occlusion = transforms.functional.resize(self.occlusion, (h, w))
+
+                if random.random() < 0.5:
+                    self.occlusion = transforms.functional.hflip(img=self.occlusion)
+
+                top = random.randint(int(-img_h + (visible_height_range[0] * h)), int(-img_h + (visible_height_range[1] * h)))
+                left = random.randint(int(-img_w + (occupied_width * img_w)), int(w - (occupied_width * img_w)))
+
+                self.occlusion = transforms.functional.crop(self.occlusion, top, left, img_h, img_w)
+
+                self.occlusion_mask = self.occlusion[3:]
+                self.occlusion_mask[self.occlusion_mask < 1] = 0
+
+                cj = transforms.ColorJitter(brightness=0.25, contrast=0.15, saturation=0.25, hue=0.5)
+
+                self.occlusion = cj(self.occlusion[0:3]) * self.occlusion_mask
+                self.occlusion_mask = 1 - self.occlusion_mask
+
+                '''self.occlusion_mask = torch.mean(self.occlusion, dim=0, keepdim=True)
+                self.occlusion_mask[self.occlusion_mask != 0] = 1
+                self.occlusion_mask = 1 - self.occlusion_mask'''
+            elif obj == 1:
+                # road signs
+                height_ratio_range = (0.9, 1.0)
+                visible_height_range = (0.9, 1.0)
+                occupied_width = 0.3
+
+                self.occlusion = Image.open(random.choice(self.road_signs))
+                self.occlusion = transforms.functional.to_tensor(self.occlusion)
+
+                if self.occlusion.size(0) != 4:
+                    print('Images need to be RGBA')
+                    return img, torch.ones((1, img.size(1), img.size(2)))
+
+                # 0 transparent
+                # 1 visible
+
+                h = random.randint(int(img_h * height_ratio_range[0]), int(img_h * height_ratio_range[1]))
+                w = int(h * (self.occlusion.size(2) / self.occlusion.size(1)))
+
+                self.occlusion = transforms.functional.resize(self.occlusion, (h, w))
+
+                top = random.randint(int(-img_h + (visible_height_range[0] * h)), int(-img_h + (visible_height_range[1] * h)))
+                left = random.randint(int(-img_w + (occupied_width * img_w)), int(w - (occupied_width * img_w)))
+
+                self.occlusion = transforms.functional.crop(self.occlusion, top, left, img_h, img_w)
+
+                self.occlusion_mask = self.occlusion[3:]
+                self.occlusion_mask[self.occlusion_mask < 1] = 0
+
+                cj = transforms.ColorJitter(brightness=0.25, contrast=0.15, saturation=0.25, hue=0)
+
+                self.occlusion = cj(self.occlusion[0:3]) * self.occlusion_mask
+                self.occlusion_mask = 1 - self.occlusion_mask
+
+            self.set_variables = False
+        
+        img = (img * self.occlusion_mask) + self.occlusion
+
+        return img, self.occlusion_mask
+
+
 class ToTensor:
     def __call__(self, img):
         return transforms.functional.to_tensor(img)
@@ -355,6 +455,26 @@ def get_transform_random_shape(training=True, hw=(384, 128), inc=1.05):
     return transforms.Compose(transform_list)
 
 
+def get_transform_random_object(training=True, hw=(384, 128), inc=1.05):
+
+    transform_list = []
+
+    if training:
+        nhw = (int(hw[0]*inc), int(hw[1]*inc))
+        transform_list.append(Resize(nhw))
+        transform_list.append(RandomHorizontalFlip())
+        transform_list.append(RandomCrop(hw))
+        transform_list.append(ToTensor())
+        transform_list.append(RandomObject())
+        transform_list.append(Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]))
+    else:
+        transform_list.append(Resize(hw))
+        transform_list.append(ToTensor())
+        transform_list.append(Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]))
+    
+    return transforms.Compose(transform_list)
+
+
 def get_transform_cj_random(training=True, hw=(384, 128), inc=1.05):
 
     transform_list = []
@@ -458,6 +578,28 @@ def get_transform_cj_random_shape(training=True, hw=(384, 128), inc=1.05):
         transform_list.append(Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]))
     
     return transforms.Compose(transform_list)
+
+
+def get_transform_cj_random_object(training=True, hw=(384, 128), inc=1.05):
+
+    transform_list = []
+
+    if training:
+        nhw = (int(hw[0]*inc), int(hw[1]*inc))
+        transform_list.append(Resize(nhw))
+        transform_list.append(RandomHorizontalFlip())
+        transform_list.append(RandomCrop(hw))
+        transform_list.append(ColorJitter(brightness=0.25, contrast=0.15, saturation=0.25, hue=0))
+        transform_list.append(ToTensor())
+        transform_list.append(RandomObject())
+        transform_list.append(Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]))
+    else:
+        transform_list.append(Resize(hw))
+        transform_list.append(ToTensor())
+        transform_list.append(Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]))
+    
+    return transforms.Compose(transform_list)
+
 
 class CustomDataset(Dataset):
 

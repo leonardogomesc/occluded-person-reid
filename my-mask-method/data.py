@@ -7,6 +7,7 @@ from PIL import Image
 import math
 import json
 import numbers
+from generate_random_shapes import get_random_shape
 
 
 class Resize:
@@ -159,6 +160,36 @@ class CustomRandomErasing:
         return img, occlusion_mask
 
 
+
+class RandomShapeErasing:
+    def __init__(self, p=1.0, height_range=(0.2, 0.6), width_range=(0.8, 1.0), n=6, prop=0.52, r=0.25, num_points=20):
+        self.set_variables = True
+        self.apply_transform = random.random() < p
+        self.height_range = height_range
+        self.width_range = width_range
+        self.n = n
+        self.prop = prop
+        self.r = r
+        self.num_points = num_points
+    
+    def __call__(self, img):
+
+        if not self.apply_transform:
+            return img, torch.ones((1, img.size(1), img.size(2)))
+        
+        if self.set_variables:
+            img_c, img_h, img_w = img.shape[-3], img.shape[-2], img.shape[-1]
+
+            self.occlusion, self.occlusion_mask = get_random_shape((img_h, img_w), height_range=self.height_range, width_range=self.width_range, n=self.n, p=self.prop, r=self.r, num_points=self.num_points)
+
+            self.set_variables = False
+
+        
+        img = (img * self.occlusion_mask) + self.occlusion
+
+        return img, self.occlusion_mask
+
+
 class ToTensor:
     def __call__(self, img):
         return transforms.functional.to_tensor(img)
@@ -304,6 +335,26 @@ def get_transform_blur(training=True, hw=(384, 128), inc=1.05):
     return transforms.Compose(transform_list)
 
 
+def get_transform_random_shape(training=True, hw=(384, 128), inc=1.05):
+
+    transform_list = []
+
+    if training:
+        nhw = (int(hw[0]*inc), int(hw[1]*inc))
+        transform_list.append(Resize(nhw))
+        transform_list.append(RandomHorizontalFlip())
+        transform_list.append(RandomCrop(hw))
+        transform_list.append(ToTensor())
+        transform_list.append(RandomShapeErasing())
+        transform_list.append(Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]))
+    else:
+        transform_list.append(Resize(hw))
+        transform_list.append(ToTensor())
+        transform_list.append(Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]))
+    
+    return transforms.Compose(transform_list)
+
+
 def get_transform_cj_random(training=True, hw=(384, 128), inc=1.05):
 
     transform_list = []
@@ -388,6 +439,26 @@ def get_transform_cj_blur(training=True, hw=(384, 128), inc=1.05):
     return transforms.Compose(transform_list)
 
 
+def get_transform_cj_random_shape(training=True, hw=(384, 128), inc=1.05):
+
+    transform_list = []
+
+    if training:
+        nhw = (int(hw[0]*inc), int(hw[1]*inc))
+        transform_list.append(Resize(nhw))
+        transform_list.append(RandomHorizontalFlip())
+        transform_list.append(RandomCrop(hw))
+        transform_list.append(ColorJitter(brightness=0.25, contrast=0.15, saturation=0.25, hue=0))
+        transform_list.append(ToTensor())
+        transform_list.append(RandomShapeErasing())
+        transform_list.append(Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]))
+    else:
+        transform_list.append(Resize(hw))
+        transform_list.append(ToTensor())
+        transform_list.append(Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]))
+    
+    return transforms.Compose(transform_list)
+
 class CustomDataset(Dataset):
 
     def __init__(self, root, extensions, transform_fn=get_transform_histogram, training=True):
@@ -433,7 +504,7 @@ class CustomDataset(Dataset):
 
         img = self.files[idx]
         path = os.path.join(self.root, img)
-        pil_img = Image.open(path)
+        pil_img = Image.open(path).convert('RGB')
 
         tensor_img, occlusion_mask = transform(pil_img)
 
@@ -477,9 +548,11 @@ def test():
     train_path = 'C:\\Users\\leona\\Documents\\Dataset\\Market-1501-v15.09.15\\bounding_box_train'
     extensions = ['.jpg']
 
-    dataset = CustomDataset(train_path, extensions, transform_fn=get_transform_blur, training=True)
+    dataset = CustomDataset(train_path, extensions, transform_fn=get_transform_random_shape, training=True)
 
     tensor_img, labels, original_labels, occlusion_mask = dataset[148]
+
+    print((tensor_img, labels, original_labels, occlusion_mask))
 
     pil_img = transforms.ToPILImage()(tensor_img)
     pil_img.show()
@@ -489,8 +562,6 @@ def test():
 
     pil_img = transforms.ToPILImage()(transforms.functional.resize(occlusion_mask, (24, 8)))
     pil_img.show()
-
-    print((tensor_img, labels, original_labels, occlusion_mask))
 
 
 if __name__ == '__main__':

@@ -92,8 +92,13 @@ class CustomRandomErasing:
     
     def __call__(self, img):
 
+        if isinstance(img, tuple):
+            img, om = img
+        else:
+            om = torch.ones((1, img.size(1), img.size(2)))
+
         if not self.apply_transform:
-            return img, torch.ones((1, img.size(1), img.size(2)))
+            return img, om
         
         if self.set_variables:
 
@@ -154,11 +159,9 @@ class CustomRandomErasing:
         
         img[:, self.y:self.y+self.h, self.x:self.x+self.w] = self.v
 
-        occlusion_mask = torch.ones((1, img.size(1), img.size(2)))
-        occlusion_mask[:, self.y:self.y+self.h, self.x:self.x+self.w] = 0.0
+        om[:, self.y:self.y+self.h, self.x:self.x+self.w] = 0
 
-        return img, occlusion_mask
-
+        return img, om
 
 
 class RandomShapeErasing:
@@ -174,8 +177,13 @@ class RandomShapeErasing:
     
     def __call__(self, img):
 
+        if isinstance(img, tuple):
+            img, om = img
+        else:
+            om = torch.ones((1, img.size(1), img.size(2)))
+
         if not self.apply_transform:
-            return img, torch.ones((1, img.size(1), img.size(2)))
+            return img, om
         
         if self.set_variables:
             img_c, img_h, img_w = img.shape[-3], img.shape[-2], img.shape[-1]
@@ -187,22 +195,29 @@ class RandomShapeErasing:
         
         img = (img * self.occlusion_mask) + self.occlusion
 
-        return img, self.occlusion_mask
+        return img, om * self.occlusion_mask
 
 
 class RandomObject:
     def __init__(self, p=1.0, 
-                        cars='C:\\Users\\leona\\Documents\\GitHub\\occluded-person-reid\\my-mask-method\\objs\\cars', 
-                        road_signs='C:\\Users\\leona\\Documents\\GitHub\\occluded-person-reid\\my-mask-method\\objs\\road_signs'):
+                        cars='objs\\cars', 
+                        road_signs='objs\\road_signs',
+                        bushes='objs\\bushes'):
         self.set_variables = True
         self.apply_transform = random.random() < p
         self.cars = [os.path.join(cars, image) for image in os.listdir(cars)]
         self.road_signs = [os.path.join(road_signs, image) for image in os.listdir(road_signs)]
+        self.bushes = [os.path.join(bushes, image) for image in os.listdir(bushes)]
     
     def __call__(self, img):
 
+        if isinstance(img, tuple):
+            img, om = img
+        else:
+            om = torch.ones((1, img.size(1), img.size(2)))
+            
         if not self.apply_transform:
-            return img, torch.ones((1, img.size(1), img.size(2)))
+            return img, om
         
         if self.set_variables:
             img_c, img_h, img_w = img.shape[-3], img.shape[-2], img.shape[-1]
@@ -220,7 +235,7 @@ class RandomObject:
 
                 if self.occlusion.size(0) != 4:
                     print('Images need to be RGBA')
-                    return img, torch.ones((1, img.size(1), img.size(2)))
+                    return img, om
 
                 # 0 transparent
                 # 1 visible
@@ -260,7 +275,7 @@ class RandomObject:
 
                 if self.occlusion.size(0) != 4:
                     print('Images need to be RGBA')
-                    return img, torch.ones((1, img.size(1), img.size(2)))
+                    return img, om
 
                 # 0 transparent
                 # 1 visible
@@ -283,11 +298,45 @@ class RandomObject:
                 self.occlusion = cj(self.occlusion[0:3]) * self.occlusion_mask
                 self.occlusion_mask = 1 - self.occlusion_mask
 
+            '''elif obj == 2:
+                # bushes
+                height_ratio_range = (0.9, 1.0)
+                visible_height_range = (0.9, 1.0)
+                occupied_width = 0.3
+
+                self.occlusion = Image.open(random.choice(self.bushes))
+                self.occlusion = transforms.functional.to_tensor(self.occlusion)
+
+                if self.occlusion.size(0) != 4:
+                    print('Images need to be RGBA')
+                    return img, om
+
+                # 0 transparent
+                # 1 visible
+
+                h = random.randint(int(img_h * height_ratio_range[0]), int(img_h * height_ratio_range[1]))
+                w = int(h * (self.occlusion.size(2) / self.occlusion.size(1)))
+
+                self.occlusion = transforms.functional.resize(self.occlusion, (h, w))
+
+                top = random.randint(int(-img_h + (visible_height_range[0] * h)), int(-img_h + (visible_height_range[1] * h)))
+                left = random.randint(int(-img_w + (occupied_width * img_w)), int(w - (occupied_width * img_w)))
+
+                self.occlusion = transforms.functional.crop(self.occlusion, top, left, img_h, img_w)
+
+                self.occlusion_mask = self.occlusion[3:]
+                self.occlusion_mask[self.occlusion_mask < 1] = 0
+
+                cj = transforms.ColorJitter(brightness=0.25, contrast=0.15, saturation=0.25, hue=0)
+
+                self.occlusion = cj(self.occlusion[0:3]) * self.occlusion_mask
+                self.occlusion_mask = 1 - self.occlusion_mask'''
+
             self.set_variables = False
         
         img = (img * self.occlusion_mask) + self.occlusion
 
-        return img, self.occlusion_mask
+        return img, om * self.occlusion_mask
 
 
 class ToTensor:
@@ -687,10 +736,10 @@ class BatchSampler(Sampler):
 
 
 def test():
-    train_path = 'C:\\Users\\leona\\Documents\\Dataset\\Market-1501-v15.09.15\\bounding_box_train'
+    train_path = 'C:\\Users\\Leonardo Capozzi\\Documents\\Datasets\\Market-1501-v15.09.15\\bounding_box_train'
     extensions = ['.jpg']
 
-    dataset = CustomDataset(train_path, extensions, transform_fn=get_transform_random_shape, training=True)
+    dataset = CustomDataset(train_path, extensions, transform_fn=get_transform_random_object, training=True)
 
     tensor_img, labels, original_labels, occlusion_mask = dataset[148]
 

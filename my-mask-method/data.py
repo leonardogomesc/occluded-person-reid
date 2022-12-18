@@ -202,12 +202,14 @@ class RandomObject:
     def __init__(self, p=1.0, 
                         cars='objs\\cars', 
                         road_signs='objs\\road_signs',
-                        bushes='objs\\bushes'):
+                        bushes='objs\\bushes',
+                        umbrellas='objs\\umbrellas'):
         self.set_variables = True
         self.apply_transform = random.random() < p
         self.cars = [os.path.join(cars, image) for image in os.listdir(cars)]
         self.road_signs = [os.path.join(road_signs, image) for image in os.listdir(road_signs)]
         self.bushes = [os.path.join(bushes, image) for image in os.listdir(bushes)]
+        self.umbrellas = [os.path.join(umbrellas, image) for image in os.listdir(umbrellas)]
     
     def __call__(self, img):
 
@@ -222,7 +224,7 @@ class RandomObject:
         if self.set_variables:
             img_c, img_h, img_w = img.shape[-3], img.shape[-2], img.shape[-1]
 
-            obj = random.choice(list(range(2)))
+            obj = random.choice(list(range(4)))
 
             if obj == 0:
                 # cars
@@ -298,11 +300,13 @@ class RandomObject:
                 self.occlusion = cj(self.occlusion[0:3]) * self.occlusion_mask
                 self.occlusion_mask = 1 - self.occlusion_mask
 
-            '''elif obj == 2:
+            elif obj == 2:
                 # bushes
                 height_ratio_range = (0.9, 1.0)
-                visible_height_range = (0.9, 1.0)
-                occupied_width = 0.3
+                visible_height_range = (0.4, 0.7)
+                visible_height_range_edges = (0.9, 1.0)
+                occupied_width = 0.2
+                occupied_width_edges = 0.7
 
                 self.occlusion = Image.open(random.choice(self.bushes))
                 self.occlusion = transforms.functional.to_tensor(self.occlusion)
@@ -319,8 +323,12 @@ class RandomObject:
 
                 self.occlusion = transforms.functional.resize(self.occlusion, (h, w))
 
-                top = random.randint(int(-img_h + (visible_height_range[0] * h)), int(-img_h + (visible_height_range[1] * h)))
                 left = random.randint(int(-img_w + (occupied_width * img_w)), int(w - (occupied_width * img_w)))
+                
+                if left > -img_w + (occupied_width_edges * img_w) and left < w - (occupied_width_edges * img_w):
+                    top = random.randint(int(-img_h + (visible_height_range[0] * h)), int(-img_h + (visible_height_range[1] * h)))
+                else:
+                    top = random.randint(int(-img_h + (visible_height_range_edges[0] * h)), int(-img_h + (visible_height_range_edges[1] * h)))
 
                 self.occlusion = transforms.functional.crop(self.occlusion, top, left, img_h, img_w)
 
@@ -330,7 +338,44 @@ class RandomObject:
                 cj = transforms.ColorJitter(brightness=0.25, contrast=0.15, saturation=0.25, hue=0)
 
                 self.occlusion = cj(self.occlusion[0:3]) * self.occlusion_mask
-                self.occlusion_mask = 1 - self.occlusion_mask'''
+                self.occlusion_mask = 1 - self.occlusion_mask
+
+            elif obj == 3:
+                # umbrellas
+                width_ratio_range = (1.5, 1.7)
+                angle_range = (-40, 40)
+                height_offset = (-0.05, 0)
+
+                self.occlusion = Image.open(random.choice(self.umbrellas))
+                self.occlusion = transforms.functional.to_tensor(self.occlusion)
+
+                if self.occlusion.size(0) != 4:
+                    print('Images need to be RGBA')
+                    return img, om
+
+                # 0 transparent
+                # 1 visible
+
+                w = random.randint(int(img_w * width_ratio_range[0]), int(img_w * width_ratio_range[1]))
+                h = int(w * (self.occlusion.size(1) / self.occlusion.size(2)))
+
+                self.occlusion = transforms.functional.resize(self.occlusion, (h, w))
+
+                angle = random.randint(angle_range[0], angle_range[1])
+                self.occlusion = transforms.functional.rotate(self.occlusion, angle)
+
+                top = random.randint(int(-height_offset[1] * img_h), int(-height_offset[0] * img_h))
+                left = random.randint(0, w-img_w)
+
+                self.occlusion = transforms.functional.crop(self.occlusion, top, left, img_h, img_w)
+
+                self.occlusion_mask = self.occlusion[3:]
+                self.occlusion_mask[self.occlusion_mask < 1] = 0
+
+                cj = transforms.ColorJitter(brightness=0.25, contrast=0.15, saturation=0.25, hue=0)
+
+                self.occlusion = cj(self.occlusion[0:3]) * self.occlusion_mask
+                self.occlusion_mask = 1 - self.occlusion_mask
 
             self.set_variables = False
         

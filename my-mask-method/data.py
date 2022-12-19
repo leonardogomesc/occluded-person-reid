@@ -372,7 +372,7 @@ class RandomObject:
                 self.occlusion_mask = self.occlusion[3:]
                 self.occlusion_mask[self.occlusion_mask < 1] = 0
 
-                cj = transforms.ColorJitter(brightness=0.25, contrast=0.15, saturation=0.25, hue=0)
+                cj = transforms.ColorJitter(brightness=0.25, contrast=0.15, saturation=0.25, hue=0.5)
 
                 self.occlusion = cj(self.occlusion[0:3]) * self.occlusion_mask
                 self.occlusion_mask = 1 - self.occlusion_mask

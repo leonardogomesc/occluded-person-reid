@@ -569,6 +569,27 @@ def get_transform_random_object(training=True, hw=(384, 128), inc=1.05):
     return transforms.Compose(transform_list)
 
 
+def get_transform_random_shape_random_object(training=True, hw=(384, 128), inc=1.05):
+
+    transform_list = []
+
+    if training:
+        nhw = (int(hw[0]*inc), int(hw[1]*inc))
+        transform_list.append(Resize(nhw))
+        transform_list.append(RandomHorizontalFlip())
+        transform_list.append(RandomCrop(hw))
+        transform_list.append(ToTensor())
+        transform_list.append(RandomShapeErasing())
+        transform_list.append(RandomObject())
+        transform_list.append(Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]))
+    else:
+        transform_list.append(Resize(hw))
+        transform_list.append(ToTensor())
+        transform_list.append(Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]))
+    
+    return transforms.Compose(transform_list)
+
+
 def get_transform_cj_random(training=True, hw=(384, 128), inc=1.05):
 
     transform_list = []
@@ -695,6 +716,27 @@ def get_transform_cj_random_object(training=True, hw=(384, 128), inc=1.05):
     return transforms.Compose(transform_list)
 
 
+def get_transform_cj_random_shape_random_object(training=True, hw=(384, 128), inc=1.05):
+
+    transform_list = []
+
+    if training:
+        nhw = (int(hw[0]*inc), int(hw[1]*inc))
+        transform_list.append(Resize(nhw))
+        transform_list.append(RandomHorizontalFlip())
+        transform_list.append(RandomCrop(hw))
+        transform_list.append(ColorJitter(brightness=0.25, contrast=0.15, saturation=0.25, hue=0))
+        transform_list.append(ToTensor())
+        transform_list.append(RandomShapeErasing())
+        transform_list.append(RandomObject())
+        transform_list.append(Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]))
+    else:
+        transform_list.append(Resize(hw))
+        transform_list.append(ToTensor())
+        transform_list.append(Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]))
+    
+    return transforms.Compose(transform_list)
+
 class CustomDataset(Dataset):
 
     def __init__(self, root, extensions, transform_fn=get_transform_histogram, training=True):
@@ -784,7 +826,7 @@ def test():
     train_path = 'C:\\Users\\Leonardo Capozzi\\Documents\\Datasets\\Market-1501-v15.09.15\\bounding_box_train'
     extensions = ['.jpg']
 
-    dataset = CustomDataset(train_path, extensions, transform_fn=get_transform_random_object, training=True)
+    dataset = CustomDataset(train_path, extensions, transform_fn=get_transform_random_shape_random_object, training=True)
 
     tensor_img, labels, original_labels, occlusion_mask = dataset[148]
 

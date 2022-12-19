@@ -3,7 +3,7 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 import time
-from data import CustomDataset, BatchSampler, get_transform_random_object, get_transform_cj_random_object, get_transform_random_shape, get_transform_cj_random_shape, get_transform_random, get_transform_random_solid, get_transform_histogram, get_transform_blur, get_transform_cj_random, get_transform_cj_random_solid, get_transform_cj_histogram, get_transform_cj_blur
+from data import *
 from torch.utils.data import DataLoader
 from models import MyModel
 from triplet import batch_hard_mine_triplet, calculate_distance_matrix
@@ -43,6 +43,10 @@ def main(dataset_name, validation=None, patience=None, checkpoint=None):
         train_path = 'C:\\Users\\leona\\Documents\\Dataset\\Market-1501-v15.09.15\\bounding_box_train'
         extensions = ['.jpg']
         transform_fn = get_transform_cj_random_object
+    elif dataset_name == 'market_occ_random_shape_random_object':
+        train_path = 'C:\\Users\\leona\\Documents\\Dataset\\Market-1501-v15.09.15\\bounding_box_train'
+        extensions = ['.jpg']
+        transform_fn = get_transform_cj_random_shape_random_object
     elif dataset_name == 'market_random':
         train_path = 'C:\\Users\\leona\\Documents\\Dataset\\Market-1501-v15.09.15\\bounding_box_train'
         extensions = ['.jpg']
@@ -67,6 +71,10 @@ def main(dataset_name, validation=None, patience=None, checkpoint=None):
         train_path = 'C:\\Users\\leona\\Documents\\Dataset\\Market-1501-v15.09.15\\bounding_box_train'
         extensions = ['.jpg']
         transform_fn = get_transform_random_object
+    elif dataset_name == 'market_random_shape_random_object':
+        train_path = 'C:\\Users\\leona\\Documents\\Dataset\\Market-1501-v15.09.15\\bounding_box_train'
+        extensions = ['.jpg']
+        transform_fn = get_transform_random_shape_random_object
     elif dataset_name == 'duke_random':
         train_path = 'C:\\Users\\leona\\Documents\\Dataset\\Occluded-DukeMTMC-reID\\bounding_box_train'
         extensions = ['.jpg']
@@ -91,6 +99,10 @@ def main(dataset_name, validation=None, patience=None, checkpoint=None):
         train_path = 'C:\\Users\\leona\\Documents\\Dataset\\Occluded-DukeMTMC-reID\\bounding_box_train'
         extensions = ['.jpg']
         transform_fn = get_transform_random_object
+    elif dataset_name == 'duke_random_shape_random_object':
+        train_path = 'C:\\Users\\leona\\Documents\\Dataset\\Occluded-DukeMTMC-reID\\bounding_box_train'
+        extensions = ['.jpg']
+        transform_fn = get_transform_random_shape_random_object
 
     dataset = CustomDataset(train_path, extensions, transform_fn=transform_fn, training=True)
     batch_sampler = BatchSampler(dataset, n_persons, n_pictures)
@@ -164,7 +176,7 @@ def main(dataset_name, validation=None, patience=None, checkpoint=None):
             fdbid_loss = ce(fdb_logits, person_labels)
             fdbtri_loss = batch_hard_mine_triplet(torch.cdist(fdb_feat, fdb_feat, p=2), person_labels)
 
-            # region visibility discriminator loss
+            # rregion visibility discriminator loss
 
             rvd_loss = bce(rvd_logits, occlusion_mask)
 
